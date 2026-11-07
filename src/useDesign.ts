@@ -163,18 +163,19 @@ export function useDesign(initial: () => { doc: Doc; saved: boolean }, onStatus:
     apply(next, null)
     setSaved(isSaved ? next : null)
     setCapped(false)
+    setSpacing(0) // the panel estimates the spacing until the next pattern reports it
   }, [apply, stopAuto])
 
   const undo = useCallback(() => {
     const step = undoStep(history, docRef.current)
     if (!step) return
-    stopAuto(); token.current++
+    stopAuto(); token.current++; setSpacing(0)
     setHistory(step.history); docRef.current = step.state; setDocState(step.state)
   }, [history, stopAuto])
   const redo = useCallback(() => {
     const step = redoStep(history, docRef.current)
     if (!step) return
-    stopAuto(); token.current++
+    stopAuto(); token.current++; setSpacing(0)
     setHistory(step.history); docRef.current = step.state; setDocState(step.state)
   }, [history, stopAuto])
 
