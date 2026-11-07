@@ -1,0 +1,19 @@
+node_modules/
+dist/
+coverage/
+.DS_Store
+*.log
+.env
+.env.*
+.claude/
+
+# Files people make with the app
+*.voronoi.json
+!test-fixtures/*.voronoi.json
+*.dxf
+*.png
+*.svg
+!public/*.svg
+
+# Local test files and QA scripts
+local/

@@ -1,0 +1,9 @@
+{
+  "schema": "voronoi-studio/project",
+  "version": 1,
+  "app": "Voronoi Studio",
+  "savedAt": "2026-11-07T12:00:00.000Z",
+  "handEdited": true,
+  "settings": { "width": 120, "height": 80, "units": "mm", "count": 4, "placement": "random" },
+  "points": [20, 20, 100, 20, 100, 60, 20, 60]
+}
