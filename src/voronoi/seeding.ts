@@ -15,7 +15,8 @@ export type SeedSettings = {
   seed: number
   density: DensitySettings
 }
-export type SeedResult = { points: Float64Array; capped: boolean }
+// spacing: the spacing actually used (0 for random), so turning Auto spacing off keeps the same look.
+export type SeedResult = { points: Float64Array; capped: boolean; spacing: number }
 
 export const MAX_POINTS = 20_000
 // Bridson's method fills about this share of the hexagonal-packing count, so it sets the starting spacing.
@@ -25,7 +26,7 @@ export function seedPoints(settings: SeedSettings, region: Region): SeedResult {
   const rng = createRng(settings.seed)
   const count = Math.max(2, Math.min(MAX_POINTS, Math.round(settings.count)))
   switch (settings.placement) {
-    case 'random': return { points: randomPoints(count, region, settings.density, rng), capped: false }
+    case 'random': return { points: randomPoints(count, region, settings.density, rng), capped: false, spacing: 0 }
     case 'even': return evenPoints(settings, count, region, rng)
     case 'hex': return gridPoints(settings, count, region, rng, true)
     case 'square': return gridPoints(settings, count, region, rng, false)
@@ -104,7 +105,7 @@ export function poissonDisk(region: Region, spacing: number, tries: number, dens
   }
   const points = new Float64Array(xs.length * 2)
   for (let i = 0; i < xs.length; i++) { points[i * 2] = xs[i]; points[i * 2 + 1] = ys[i] }
-  return { points, capped }
+  return { points, capped, spacing }
 }
 
 function evenPoints(settings: SeedSettings, count: number, region: Region, rng: Rng): SeedResult {
@@ -119,7 +120,7 @@ function evenPoints(settings: SeedSettings, count: number, region: Region, rng: 
     spacing *= Math.sqrt((best.points.length / 2) / count) * 0.97
     best = poissonDisk(region, spacing, tries, settings.density, rng, count * 3)
   }
-  return { points: trim(best.points, count, rng), capped: false }
+  return { points: trim(best.points, count, rng), capped: false, spacing: best.spacing }
 }
 
 // Drop random points until the count is met, or top up with random points if a sample fell short.
@@ -163,5 +164,5 @@ function gridPoints(settings: SeedSettings, count: number, region: Region, rng: 
       xs.push(x, y)
     }
   }
-  return { points: Float64Array.from(xs), capped }
+  return { points: Float64Array.from(xs), capped, spacing }
 }

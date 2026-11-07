@@ -29,6 +29,11 @@ export function freshDoc(settings: Settings): Doc {
   return { settings, points: runJob({ kind: 'generate', settings }).points, handEdited: false, stale: false }
 }
 
+// The spacing the last generated pattern used, so turning Auto spacing off can keep it.
+export function spacingOf(settings: Settings): number {
+  return runJob({ kind: 'generate', settings: { ...settings, relaxSteps: 0 } }).spacing
+}
+
 export function useDesign(initial: () => { doc: Doc; saved: boolean }, onStatus: (status: Status) => void) {
   const [start] = useState(initial)
   const [doc, setDocState] = useState(start.doc)
@@ -38,6 +43,7 @@ export function useDesign(initial: () => { doc: Doc; saved: boolean }, onStatus:
   const [busy, setBusy] = useState(false)
   const [auto, setAuto] = useState(false)
   const [capped, setCapped] = useState(false)
+  const [spacing, setSpacing] = useState(0)
   const docRef = useRef(doc)
   const client = useRef<PatternClient | null>(null)
   const token = useRef(0)
@@ -81,6 +87,7 @@ export function useDesign(initial: () => { doc: Doc; saved: boolean }, onStatus:
         if (id !== token.current) return
         apply({ ...docRef.current, points: result.points, handEdited: false, stale: false }, false)
         setCapped(result.capped)
+        setSpacing(result.spacing)
         status.current(result.capped ? { text: 'Stopped at 20,000 points. Increase the spacing.', warning: true } : null)
       }).catch((error: Error) => status.current({ text: `The pattern could not be made: ${error.message}`, warning: true }))
         .finally(() => {
@@ -206,6 +213,6 @@ export function useDesign(initial: () => { doc: Doc; saved: boolean }, onStatus:
     doc, change, generate, relaxOnce, toggleAuto, beginEdit, editPoints, replace, undo, redo, stopAuto,
     canUndo: history.past.length > 0, canRedo: history.future.length > 0,
     unsaved: doc !== saved, markSaved: (what: Doc) => setSaved(what),
-    busy, auto, capped,
+    busy, auto, capped, spacing,
   }
 }

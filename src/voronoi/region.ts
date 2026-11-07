@@ -62,8 +62,24 @@ export function regionPolygon(r: Region): Polygon {
   return ellipsePolygon(cx, cy, regionWidth(r) / 2, regionHeight(r) / 2, ELLIPSE_SEGMENTS)
 }
 
-// Map a point from one region's box to another's, for keeping points when the sheet changes size.
+// Map a point from one region to another, for keeping points when the sheet changes. Boxes scale
+// proportionally; between a rectangle and an ellipse, the square-to-disc "elliptical grid" mapping
+// spreads points smoothly instead of piling them up on the rim.
 export function mapBetween(from: Region, to: Region, x: number, y: number): Vec {
-  const u = (x - from.x0) / Math.max(1e-9, regionWidth(from)), v = (y - from.y0) / Math.max(1e-9, regionHeight(from))
-  return clampToRegion(to, to.x0 + u * regionWidth(to), to.y0 + v * regionHeight(to))
+  const [fx, fy] = regionCenter(from), [tx, ty] = regionCenter(to)
+  let u = (x - fx) / Math.max(1e-9, regionWidth(from) / 2), v = (y - fy) / Math.max(1e-9, regionHeight(from) / 2)
+  if (from.shape === 'rect' && to.shape === 'ellipse') {
+    u = Math.max(-1, Math.min(1, u)); v = Math.max(-1, Math.min(1, v))
+    ;[u, v] = [u * Math.sqrt(1 - (v * v) / 2), v * Math.sqrt(1 - (u * u) / 2)]
+  } else if (from.shape === 'ellipse' && to.shape === 'rect') {
+    const k = Math.hypot(u, v)
+    if (k > 1) { u /= k; v /= k }
+    const r2 = 2 * Math.SQRT2
+    const a = 2 + u * u - v * v, b = 2 - u * u + v * v
+    ;[u, v] = [
+      (Math.sqrt(Math.max(0, a + r2 * u)) - Math.sqrt(Math.max(0, a - r2 * u))) / 2,
+      (Math.sqrt(Math.max(0, b + r2 * v)) - Math.sqrt(Math.max(0, b - r2 * v))) / 2,
+    ]
+  }
+  return clampToRegion(to, tx + u * (regionWidth(to) / 2), ty + v * (regionHeight(to) / 2))
 }

@@ -12,7 +12,7 @@ export type EditKind = 'move' | 'add' | 'erase'
 type View = { zoom: number; panX: number; panY: number }
 type Drag =
   | { kind: 'pan'; startX: number; startY: number; panX: number; panY: number }
-  | { kind: 'point'; index: number }
+  | { kind: 'point'; index: number; dx: number; dy: number }
   | { kind: 'erase'; last: number }
   | { kind: 'pinch'; distance: number; midX: number; midY: number; view: View; worldX: number; worldY: number }
 
@@ -88,6 +88,8 @@ export function Stage({ geometry, points, settings, tool, frameRef, controlRef, 
     ctx.setTransform(1, 0, 0, 1, 0, 0)
     ctx.clearRect(0, 0, w, h)
     drawDesign(ctx, geometry, points, settings, { scale, ox, oy, dpr, preview: true, hover })
+    // Read-only view state for QA scripts in development builds.
+    if (import.meta.env.DEV) (window as unknown as { __stage: unknown }).__stage = { scale, ox, oy, points, rect: box.current?.getBoundingClientRect() }
   }, [geometry, points, settings, scale, ox, oy, size, hover])
 
   const toWorld = useCallback((clientX: number, clientY: number) => {
@@ -152,7 +154,7 @@ export function Stage({ geometry, points, settings, tool, frameRef, controlRef, 
   }
 
   const onPointerDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
-    event.currentTarget.setPointerCapture(event.pointerId)
+    try { event.currentTarget.setPointerCapture(event.pointerId) } catch { /* the pointer already ended */ }
     pointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY })
     setHover(null)
     if (pointers.current.size === 2) {
@@ -178,7 +180,7 @@ export function Stage({ geometry, points, settings, tool, frameRef, controlRef, 
       next.set(live.current); next[next.length - 2] = px; next[next.length - 1] = py
       live.current = next
       onPoints(next)
-      drag.current = { kind: 'point', index: next.length / 2 - 1 }
+      drag.current = { kind: 'point', index: next.length / 2 - 1, dx: 0, dy: 0 }
       setCursor('grabbing')
       return
     }
@@ -191,7 +193,8 @@ export function Stage({ geometry, points, settings, tool, frameRef, controlRef, 
     const near = nearestPoint(live.current, x, y)
     if (near.index >= 0 && near.distance <= hitRadius(event)) {
       onBeginEdit('move')
-      drag.current = { kind: 'point', index: near.index }
+      // Keep the grab offset so the point doesn't jump under the finger.
+      drag.current = { kind: 'point', index: near.index, dx: live.current[near.index * 2] - x, dy: live.current[near.index * 2 + 1] - y }
       setCursor('grabbing')
       return
     }
@@ -216,7 +219,7 @@ export function Stage({ geometry, points, settings, tool, frameRef, controlRef, 
     if (d?.kind === 'pan') { setView(v => ({ ...v, panX: d.panX + event.clientX - d.startX, panY: d.panY + event.clientY - d.startY })); return }
     const [x, y] = toWorld(event.clientX, event.clientY)
     if (d?.kind === 'point') {
-      const [px, py] = clampToRegion(geometry.region, x, y)
+      const [px, py] = clampToRegion(geometry.region, x + d.dx, y + d.dy)
       const next = live.current.slice()
       next[d.index * 2] = px; next[d.index * 2 + 1] = py
       live.current = next

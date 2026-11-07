@@ -24,8 +24,9 @@ const DENSITIES: Option<DensityMode>[] = [
   { value: 'radial', label: 'Radial', tip: 'Cells get smaller toward the centre, or toward the edge.' },
 ]
 
-export function PatternPanel({ s, change, stale, onApply, actualCount, autoSpacingValue, capped, onShuffle }: {
-  s: Settings; change: Change; stale: boolean; onApply: () => void; actualCount: number; autoSpacingValue: number; capped: boolean; onShuffle: () => void
+export function PatternPanel({ s, change, stale, onApply, actualCount, autoSpacingValue, exactSpacing, capped, onShuffle }: {
+  s: Settings; change: Change; stale: boolean; onApply: () => void; actualCount: number; autoSpacingValue: number
+  exactSpacing: () => number; capped: boolean; onShuffle: () => void
 }) {
   const grid = s.placement === 'hex' || s.placement === 'square'
   const spacingOff = s.placement === 'random' && 'Random placement has no spacing to set.'
@@ -56,7 +57,7 @@ export function PatternPanel({ s, change, stale, onApply, actualCount, autoSpaci
 
       <SwitchField label="Auto spacing" checked={s.autoSpacing || s.placement === 'random'} unavailable={spacingOff}
         tip="On: spacing follows the cell count and the sheet size. Off: you set the spacing, and the count follows."
-        onChange={autoSpacing => change(autoSpacing ? { autoSpacing } : { autoSpacing, spacing: +autoSpacingValue.toFixed(3) }, 'autoSpacing')} />
+        onChange={autoSpacing => change(autoSpacing ? { autoSpacing } : { autoSpacing, spacing: +exactSpacing().toFixed(4) }, 'autoSpacing')} />
       <LengthField label={s.placement === 'even' ? 'Minimum spacing' : 'Grid spacing'} mm={s.autoSpacing ? autoSpacingValue : s.spacing}
         min={RANGES.spacing[0]} max={RANGES.spacing[1]} units={s.units} dpi={s.dpi} small
         unavailable={spacingOff || (s.autoSpacing && `Auto spacing picks about ${formatLength(autoSpacingValue, s.units, s.dpi, true)} for this count. Turn Auto spacing off to set your own.`)}

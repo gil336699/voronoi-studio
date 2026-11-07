@@ -55,7 +55,22 @@ describe('regions', () => {
     expect(Math.hypot(x - 50, y - 50)).toBeCloseTo(50, 3)
   })
 
-  it('maps points between sheet sizes', () => {
+  it('maps points between sheet sizes and shapes without piling them on the rim', () => {
     expect(mapBetween(sheet, sheetRegion(400, 200, 'rect'), 50, 50)).toEqual([100, 100])
+    const round = sheetRegion(200, 100, 'ellipse')
+    let onRim = 0
+    for (let i = 0; i <= 20; i++) for (let j = 0; j <= 20; j++) {
+      const x = i * 10, y = j * 5
+      const [ex, ey] = mapBetween(sheet, round, x, y)
+      expect(contains(round, ex, ey)).toBe(true)
+      if (Math.hypot((ex - 100) / 100, (ey - 50) / 50) > 0.999) onRim++
+      // Mapping back returns the point; exact corners land on the rim and come back within 0.1 mm.
+      const [bx, by] = mapBetween(round, sheet, ex, ey)
+      const edge = i === 0 || i === 20 || j === 0 || j === 20
+      expect(Math.abs(bx - x)).toBeLessThan(edge ? 0.1 : 1e-3)
+      expect(Math.abs(by - y)).toBeLessThan(edge ? 0.1 : 1e-3)
+    }
+    // Only the 80 grid points on the rectangle's own edge land on the rim.
+    expect(onRim).toBeLessThanOrEqual(80)
   })
 })

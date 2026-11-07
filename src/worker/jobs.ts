@@ -8,7 +8,7 @@ import { seedSettings, type Settings } from '../lib/settings'
 export type Job =
   | { kind: 'generate'; settings: Settings }
   | { kind: 'relax'; settings: Settings; points: Float64Array; steps: number }
-export type JobResult = { points: Float64Array; maxMove: number; capped: boolean }
+export type JobResult = { points: Float64Array; maxMove: number; capped: boolean; spacing: number }
 
 export function runJob(job: Job): JobResult {
   const region = patternRegion(job.settings)
@@ -16,8 +16,8 @@ export function runJob(job: Job): JobResult {
   if (job.kind === 'generate') {
     const seeded = seedPoints(seedSettings(job.settings), region)
     const relaxed = relax(seeded.points, region, density, job.settings.relaxSteps)
-    return { points: relaxed.points, maxMove: relaxed.maxMove, capped: seeded.capped }
+    return { points: relaxed.points, maxMove: relaxed.maxMove, capped: seeded.capped, spacing: seeded.spacing }
   }
   const relaxed = relax(job.points, region, density, Math.max(1, job.steps))
-  return { ...relaxed, capped: false }
+  return { ...relaxed, capped: false, spacing: 0 }
 }

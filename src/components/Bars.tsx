@@ -39,9 +39,9 @@ export function ViewBar({ tool, setTool, s, toggle, zoom, onFit, onZoom }: {
         <Button pressed={s.showEdges} shortcut="2" tip={`Show or hide the cell ${edgeName.toLowerCase()}.`} onClick={() => toggle('showEdges')}>{edgeName}</Button>
         <Button pressed={s.showDelaunay} shortcut="3" tip="Show or hide the Delaunay triangulation, the lines joining neighbouring points." onClick={() => toggle('showDelaunay')}>Delaunay</Button>
         <span className="bar-divider" aria-hidden="true" />
-        <Button className="icon-button" label="Zoom out" shortcut="−" tip="Zoom out." onClick={() => onZoom(1 / 1.25)}><Icon name="minus" /></Button>
+        <Button className="icon-button zoom-step" label="Zoom out" shortcut="−" tip="Zoom out." onClick={() => onZoom(1 / 1.25)}><Icon name="minus" /></Button>
         <Button className="zoom-readout" shortcut="F" tip="Fit the whole sheet in the window." label={`Zoom ${Math.round(zoom * 100)} percent. Fit to window`} onClick={onFit}>{Math.round(zoom * 100)}%</Button>
-        <Button className="icon-button" label="Zoom in" shortcut="+" tip="Zoom in." onClick={() => onZoom(1.25)}><Icon name="plus" /></Button>
+        <Button className="icon-button zoom-step" label="Zoom in" shortcut="+" tip="Zoom in." onClick={() => onZoom(1.25)}><Icon name="plus" /></Button>
       </div>
     </div>
     <p className="view-caption"><span>{TOOL_CAPTION[tool]}</span></p>

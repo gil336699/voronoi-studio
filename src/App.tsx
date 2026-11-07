@@ -15,7 +15,7 @@ import { saveFile } from './lib/saveFile'
 import { DEFAULTS, seedSettings, type Settings } from './lib/settings'
 import { artworkSvg, laserSvg } from './lib/svgExport'
 import { pixelSize, trimZeros, toUnits, UNIT_LABEL } from './lib/units'
-import { freshDoc, useDesign, type Doc, type Status } from './useDesign'
+import { freshDoc, spacingOf, useDesign, type Doc, type Status } from './useDesign'
 import { integrateDensity, densityField } from './voronoi/density'
 import { buildGeometry, patternRegion } from './voronoi/pattern'
 import { randomSeed } from './voronoi/random'
@@ -226,7 +226,7 @@ export function App() {
       ]} />
       <TabPanel idBase="design" id="pattern" value={tab}>
         <PatternPanel s={s} change={design.change} stale={doc.stale} onApply={applySettings} actualCount={count}
-          autoSpacingValue={autoSpacingFor(s)} capped={design.capped} onShuffle={generateNew} />
+          autoSpacingValue={design.spacing || autoSpacingFor(s)} exactSpacing={() => spacingOf(s)} capped={design.capped} onShuffle={generateNew} />
       </TabPanel>
       <TabPanel idBase="design" id="sheet" value={tab}><SheetPanel s={s} change={design.change} /></TabPanel>
       <TabPanel idBase="design" id="style" value={tab}><StylePanel s={s} change={design.change} /></TabPanel>
