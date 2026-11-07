@@ -11,7 +11,7 @@ export type HoleSettings = { web: number; radius: number; minHole: number }
 // The largest inset that still leaves a shape, found by halving the search range.
 function maxInset(poly: Polygon, upTo: number): number {
   let lo = 0, hi = upTo
-  for (let i = 0; i < 24; i++) {
+  for (let i = 0; i < 16; i++) {
     const mid = (lo + hi) / 2
     if (insetConvex(poly, mid).length) lo = mid
     else hi = mid
@@ -23,6 +23,8 @@ export function makeHole(cell: Polygon, index: number, settings: HoleSettings): 
   const poly = normalize(cell)
   if (poly.length < 3) return null
   const half = Math.max(0, settings.web / 2)
+  // A hole can be at most the cell's width less the web, so cells that can't reach the smallest hole stop here.
+  if (minWidth(poly) - 2 * half < Math.max(settings.minHole, 1e-9)) return null
   let radius = Math.max(0, settings.radius)
   let core = insetConvex(poly, half + radius)
   if (!core.length) {

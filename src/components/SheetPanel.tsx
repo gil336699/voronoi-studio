@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { matchPreset, presetSize, SHEET_PRESETS } from '../lib/presets'
 import { RANGES, type Settings } from '../lib/settings'
 import { pixelSize, type Units } from '../lib/units'
@@ -17,7 +18,8 @@ const SHAPES: Option<Shape>[] = [
   { value: 'ellipse', label: 'Ellipse', tip: 'A round or oval sheet that fits the width and height, such as a coaster or a round panel.' },
 ]
 
-export function SheetPanel({ s, change }: { s: Settings; change: Change }) {
+// Memoised: the panel only re-renders when its own props change, not on every relax step.
+export const SheetPanel = memo(function SheetPanel({ s, change }: { s: Settings; change: Change }) {
   const preset = matchPreset(s.width, s.height, s.shape, s.units, s.dpi)
   const [pw, ph] = pixelSize(s.width, s.height, s.dpi)
   const maxBorder = Math.min(s.width, s.height) / 3
@@ -59,4 +61,4 @@ export function SheetPanel({ s, change }: { s: Settings; change: Change }) {
         onChange={keepPoints => change({ keepPoints }, 'keepPoints')} />
     </Section>
   </>
-}
+})

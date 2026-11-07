@@ -135,34 +135,60 @@ function trim(points: Float64Array, count: number, rng: Rng): Float64Array {
   return keep.length === count ? out : out.slice(0, keep.length * 2)
 }
 
+// A grid that tiles the region exactly: half a spacing from each edge, so border cells match the rest.
+// Columns and rows are whole numbers, so the spacing stretches slightly in x or y to fit.
+type Grid = { cols: number; rows: number }
+const gridSteps = (region: Region, { cols, rows }: Grid, hex: boolean) => [regionWidth(region) / (cols + (hex ? 0.5 : 0)), regionHeight(region) / rows]
+
+function lattice(region: Region, grid: Grid, hex: boolean, visit?: (x: number, y: number) => void): number {
+  const [sx, sy] = gridSteps(region, grid, hex)
+  if (region.shape === 'rect' && !visit) return grid.cols * grid.rows
+  let n = 0
+  for (let r = 0; r < grid.rows; r++) {
+    for (let c = 0; c < grid.cols; c++) {
+      const x = region.x0 + sx / 2 + c * sx + (hex && r % 2 ? sx / 2 : 0), y = region.y0 + sy / 2 + r * sy
+      if (!contains(region, x, y)) continue
+      n++
+      visit?.(x, y)
+    }
+  }
+  return n
+}
+
 function gridPoints(settings: SeedSettings, count: number, region: Region, rng: Rng, hex: boolean): SeedResult {
   const w = regionWidth(region), h = regionHeight(region)
   const area = regionArea(region)
-  let spacing = settings.autoSpacing
-    ? (hex ? Math.sqrt((2 * area) / (Math.sqrt(3) * count)) : Math.sqrt(area / count))
-    : Math.max(1e-3, settings.spacing)
+  const rowStep = hex ? Math.sqrt(3) / 2 : 1 // row spacing as a share of column spacing for regular cells
+  let spacing = settings.autoSpacing ? Math.sqrt(area / (count * rowStep)) : Math.max(1e-3, settings.spacing)
   let capped = false
-  const estimate = (s: number) => area / (hex ? (Math.sqrt(3) / 2) * s * s : s * s)
+  const estimate = (s: number) => area / (rowStep * s * s)
   if (estimate(spacing) > MAX_POINTS) { spacing *= Math.sqrt(estimate(spacing) / MAX_POINTS) * 1.01; capped = true }
-  const dy = hex ? spacing * (Math.sqrt(3) / 2) : spacing
-  const cols = Math.max(1, Math.floor(w / spacing)), rows = Math.max(1, Math.floor(h / dy))
-  // Centre the lattice so the margins are equal on both sides.
-  const ox = region.x0 + (w - (cols - 1) * spacing - (hex ? spacing / 2 : 0)) / 2
-  const oy = region.y0 + (h - (rows - 1) * dy) / 2
-  const jitter = Math.max(0, Math.min(1, settings.jitter)) * spacing * 0.5
-  const xs: number[] = []
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols + (hex ? 1 : 0); c++) {
-      let x = ox + c * spacing + (hex && r % 2 ? spacing / 2 : 0)
-      let y = oy + r * dy
-      if (hex && (x < region.x0 || x > region.x1)) continue
-      if (!contains(region, x, y)) continue
-      if (jitter > 0) {
-        const angle = rng() * Math.PI * 2, dist = Math.sqrt(rng()) * jitter
-        ;[x, y] = clampToRegion(region, x + Math.cos(angle) * dist, y + Math.sin(angle) * dist)
+  const fit = (cols: number): Grid => ({ cols, rows: Math.max(1, Math.round(h / (rowStep * w / (cols + (hex ? 0.5 : 0))))) })
+  let grid = fit(Math.max(1, Math.round(w / spacing - (hex ? 0.5 : 0))))
+  if (settings.autoSpacing && !capped) {
+    // Search nearby column and row counts for the closest count, preferring cells that stay regular.
+    let best = Infinity
+    const guess = grid.cols
+    for (let cols = Math.max(1, Math.floor(guess * 0.7)); cols <= Math.ceil(guess * 1.3) + 1; cols++) {
+      const base = fit(cols).rows
+      for (let rows = Math.max(1, base - 1); rows <= base + 1; rows++) {
+        const [sx, sy] = gridSteps(region, { cols, rows }, hex)
+        const stretch = Math.abs(Math.log(sy / (sx * rowStep)))
+        if (stretch > 0.15) continue
+        const miss = Math.abs(lattice(region, { cols, rows }, hex) - count) + stretch * count * 0.05
+        if (miss < best) { best = miss; grid = { cols, rows } }
       }
-      xs.push(x, y)
     }
   }
-  return { points: Float64Array.from(xs), capped, spacing }
+  const [sx] = gridSteps(region, grid, hex)
+  const jitter = Math.max(0, Math.min(1, settings.jitter)) * sx * 0.5
+  const xs: number[] = []
+  lattice(region, grid, hex, (x, y) => {
+    if (jitter > 0) {
+      const angle = rng() * Math.PI * 2, dist = Math.sqrt(rng()) * jitter
+      ;[x, y] = clampToRegion(region, x + Math.cos(angle) * dist, y + Math.sin(angle) * dist)
+    }
+    xs.push(x, y)
+  })
+  return { points: Float64Array.from(xs), capped, spacing: sx }
 }

@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { RANGES, type Settings } from '../lib/settings'
 import type { CellStyle } from '../voronoi/pattern'
 import { ColorField, LengthField, Section, Segmented, SwitchField, type Option } from './Controls'
@@ -8,7 +9,8 @@ const STYLES: Option<CellStyle>[] = [
   { value: 'holes', label: 'Holes', tip: 'Each cell cut out as a hole with rounded corners, leaving a web of material between them.' },
 ]
 
-export function StylePanel({ s, change }: { s: Settings; change: Change }) {
+// Memoised: the panel only re-renders when its own props change, not on every relax step.
+export const StylePanel = memo(function StylePanel({ s, change }: { s: Settings; change: Change }) {
   const len = { units: s.units, dpi: s.dpi, small: true }
   return <>
     <Section title="Cells">
@@ -38,4 +40,4 @@ export function StylePanel({ s, change }: { s: Settings; change: Change }) {
       <p className="hint">Sites, edges and Delaunay lines switch on and off in the bar above the sheet.</p>
     </Section>
   </>
-}
+})

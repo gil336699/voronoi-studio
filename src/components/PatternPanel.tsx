@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { RANGES, type Settings } from '../lib/settings'
 import { formatLength } from '../lib/units'
 import { Button, DraftNumber, LengthField, NumberField, Section, Segmented, SliderField, SwitchField, type Option } from './Controls'
@@ -24,7 +25,8 @@ const DENSITIES: Option<DensityMode>[] = [
   { value: 'radial', label: 'Radial', tip: 'Cells get smaller toward the centre, or toward the edge.' },
 ]
 
-export function PatternPanel({ s, change, stale, onApply, actualCount, autoSpacingValue, exactSpacing, capped, onShuffle }: {
+// Memoised: the panel only re-renders when its own props change, not on every relax step.
+export const PatternPanel = memo(function PatternPanel({ s, change, stale, onApply, actualCount, autoSpacingValue, exactSpacing, capped, onShuffle }: {
   s: Settings; change: Change; stale: boolean; onApply: () => void; actualCount: number; autoSpacingValue: number
   exactSpacing: () => number; capped: boolean; onShuffle: () => void
 }) {
@@ -99,4 +101,4 @@ export function PatternPanel({ s, change, stale, onApply, actualCount, autoSpaci
       <p className="hint">Each step moves every point to the centre of its cell. 1–3 steps give a natural, even look; many steps look very regular. <b>Relax</b> and <b>Auto-relax</b> are in the bar under the sheet.</p>
     </Section>
   </>
-}
+})

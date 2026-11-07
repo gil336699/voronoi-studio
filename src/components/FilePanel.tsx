@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { pngProblem } from '../lib/render'
 import type { Settings } from '../lib/settings'
 import { pixelSize, UNIT_NAME } from '../lib/units'
@@ -6,7 +7,8 @@ import type { Change } from './PatternPanel'
 
 export type ExportKind = 'png' | 'svg' | 'laser' | 'dxf'
 
-export function FilePanel({ s, change, unsaved, busy, onNew, onOpen, onSave, onExport, openError }: {
+// Memoised: the panel only re-renders when its own props change, not on every relax step.
+export const FilePanel = memo(function FilePanel({ s, change, unsaved, busy, onNew, onOpen, onSave, onExport, openError }: {
   s: Settings; change: Change; unsaved: boolean; busy: boolean
   onNew: () => void; onOpen: () => void; onSave: () => void; onExport: (kind: ExportKind) => void; openError: string
 }) {
@@ -46,4 +48,4 @@ export function FilePanel({ s, change, unsaved, busy, onNew, onOpen, onSave, onE
       <p className="hint">{pngBlocked ?? `PNG: ${pw.toLocaleString()} × ${ph.toLocaleString()} px. Exports always show the whole sheet, whatever the zoom.`}</p>
     </Section>
   </>
-}
+})

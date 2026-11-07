@@ -57,12 +57,17 @@ describe('seeding', () => {
     expect(evenness(seedPoints(seed({ placement: 'even' }), sheet).points)).toBeLessThan(evenness(seedPoints(seed({ placement: 'random' }), sheet).points) * 0.7)
   })
 
-  it('places grids close to the requested count', () => {
-    for (const placement of ['hex', 'square'] as const) {
-      const n = seedPoints(seed({ placement }), sheet).points.length / 2
-      expect(n).toBeGreaterThan(240)
-      expect(n).toBeLessThan(340)
+  it('places grids within a few percent of the requested count, filling the region evenly', () => {
+    for (const region of [sheet, oval, sheetRegion(600, 400, 'rect')]) {
+      for (const placement of ['hex', 'square'] as const) {
+        for (const count of [82, 300, 2000]) {
+          const { points } = seedPoints(seed({ placement, count }), region)
+          expect(Math.abs(points.length / 2 - count) / count).toBeLessThan(0.05)
+        }
+      }
     }
+    // An unjittered square grid tiles a square sheet with identical cells.
+    expect(evenness(seedPoints(seed({ placement: 'square', count: 400 }), sheet).points)).toBeLessThan(1e-9)
   })
 
   it('stops at the point limit when the spacing is tiny', () => {

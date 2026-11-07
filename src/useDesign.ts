@@ -1,29 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { emptyHistory, record, redo as redoStep, undo as undoStep, type History } from './lib/history'
-import { type Design } from './lib/project'
-import { SEED_KEYS, SHEET_KEYS, type Settings } from './lib/settings'
+import { planChange, type Doc } from './lib/changes'
+import type { Settings } from './lib/settings'
 import { patternRegion } from './voronoi/pattern'
-import { mapBetween, type Region } from './voronoi/region'
 import { typicalSpacing } from './voronoi/seeding'
 import { runJob, type Job, type JobResult } from './worker/jobs'
 import { PatternClient } from './worker/patternClient'
 
 // The design being edited, with undo, unsaved-change tracking, and the background jobs that make and
-// relax points. React components stay thin; the rules for when settings remake the pattern live here.
+// relax points. The rules for what a settings change does to the points are in lib/changes.ts.
 
-export type Doc = Design & { stale: boolean }
+export type { Doc }
 export type Status = { text: string; warning?: boolean } | null
 
 const AUTO_MAX_STEPS = 3000
-const LENGTH_KEYS = ['width', 'height', 'border', 'spacing', 'web', 'cornerRadius', 'minHole', 'lineWidth'] as const
-
-const sameRegion = (a: Region, b: Region) => a.shape === b.shape && [a.x0 - b.x0, a.y0 - b.y0, a.x1 - b.x1, a.y1 - b.y1].every(d => Math.abs(d) < 1e-9)
-
-export function mapPoints(points: Float64Array, from: Region, to: Region): Float64Array {
-  const out = new Float64Array(points.length)
-  for (let i = 0; i < points.length; i += 2) [out[i], out[i + 1]] = mapBetween(from, to, points[i], points[i + 1])
-  return out
-}
 
 export function freshDoc(settings: Settings): Doc {
   return { settings, points: runJob({ kind: 'generate', settings }).points, handEdited: false, stale: false }
@@ -102,30 +92,9 @@ export function useDesign(initial: () => { doc: Doc; saved: boolean }, onStatus:
   }, [apply, run, stopAuto])
 
   const change = useCallback((patch: Partial<Settings>, key?: string) => {
-    const prev = docRef.current
-    let settings = { ...prev.settings, ...patch }
-    let points = prev.points
-    // Pixel sheets keep their pixel size when pixels per inch changes, so every length scales with it.
-    if (patch.dpi !== undefined && prev.settings.units === 'px' && patch.dpi !== prev.settings.dpi) {
-      const k = prev.settings.dpi / patch.dpi
-      settings = { ...settings, ...Object.fromEntries(LENGTH_KEYS.map(name => [name, prev.settings[name] * k])) }
-      points = points.map(v => v * k)
-      apply({ ...prev, settings, points }, `settings:${key ?? 'dpi'}`)
-      return
-    }
-    const changed = (keys: (keyof Settings)[]) => keys.some(k => settings[k] !== prev.settings[k])
-    const seedChanged = changed(SEED_KEYS), sheetChanged = changed(SHEET_KEYS)
-    const from = patternRegion(prev.settings), to = patternRegion(settings)
-    const moved = !sameRegion(from, to)
-    let stale = prev.stale, remake = false
-    if (seedChanged || (sheetChanged && !settings.keepPoints)) {
-      if (prev.handEdited) stale = true
-      else remake = true
-    }
-    // Keep points inside the pattern when it moves, unless a new pattern is on its way.
-    if (moved && !remake) points = mapPoints(points, from, to)
-    apply({ ...prev, settings, points, stale }, `settings:${key ?? Object.keys(patch).join(',')}`)
-    if (remake) regenerate(settings)
+    const { next, remake } = planChange(docRef.current, patch)
+    apply(next, `settings:${key ?? Object.keys(patch).join(',')}`)
+    if (remake) regenerate(next.settings)
   }, [apply, regenerate])
 
   // A new pattern from the current settings, optionally with a new seed. Callers confirm first if points were edited.

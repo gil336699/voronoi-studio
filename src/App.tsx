@@ -83,7 +83,12 @@ export function App() {
     return () => window.clearTimeout(timer)
   }, [status])
 
-  const geometry = useMemo(() => buildGeometry(doc.points, s), [doc.points, s])
+  // Geometry depends on a few settings only, so colour and visibility changes don't rebuild it.
+  const { width, height, shape, border, cellStyle, web, cornerRadius, minHole, showDelaunay } = s
+  const patternSettings = useMemo(() => ({ width, height, shape, border, cellStyle, web, cornerRadius, minHole, showDelaunay }),
+    [width, height, shape, border, cellStyle, web, cornerRadius, minHole, showDelaunay])
+  const geometry = useMemo(() => buildGeometry(doc.points, patternSettings), [doc.points, patternSettings])
+  const exactSpacing = useCallback(() => spacingOf(s), [s])
   const count = doc.points.length / 2
 
   // Keep a copy of the session, a moment after the last change.
@@ -226,7 +231,7 @@ export function App() {
       ]} />
       <TabPanel idBase="design" id="pattern" value={tab}>
         <PatternPanel s={s} change={design.change} stale={doc.stale} onApply={applySettings} actualCount={count}
-          autoSpacingValue={design.spacing || autoSpacingFor(s)} exactSpacing={() => spacingOf(s)} capped={design.capped} onShuffle={generateNew} />
+          autoSpacingValue={design.spacing || autoSpacingFor(s)} exactSpacing={exactSpacing} capped={design.capped} onShuffle={generateNew} />
       </TabPanel>
       <TabPanel idBase="design" id="sheet" value={tab}><SheetPanel s={s} change={design.change} /></TabPanel>
       <TabPanel idBase="design" id="style" value={tab}><StylePanel s={s} change={design.change} /></TabPanel>
