@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import type { Settings } from '../lib/settings'
-import { formatLength, formatLong } from '../lib/units'
+import { formatLength, formatLong, formatSmall } from '../lib/units'
 import type { Metrics } from '../voronoi/pattern'
 import { Button } from './Controls'
 import { Icon, type IconName } from './Icon'
@@ -75,7 +75,7 @@ export function Dock({ relaxSteps, auto, busy, canRelax, onGenerate, onRelax, on
 }
 
 export function Inspector({ m, s, count }: { m: Metrics; s: Settings; count: number }) {
-  const L = (mm: number) => formatLength(mm, s.units, s.dpi, true)
+  const L = (mm: number) => formatSmall(mm, s.units, s.dpi)
   const holes = s.cellStyle === 'holes'
   const rows: [string, string, string][] = [
     ['Sheet', `${formatLength(s.width, s.units, s.dpi)} × ${formatLength(s.height, s.units, s.dpi)}`, s.shape === 'ellipse' ? 'An ellipse that fits this width and height.' : 'Width × height of the sheet.'],

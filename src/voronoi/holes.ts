@@ -8,10 +8,9 @@ export type Outline = { points: Vec[]; bulges: number[] }
 export type Hole = { cell: number; outline: Outline; width: number; area: number; length: number }
 export type HoleSettings = { web: number; radius: number; minHole: number }
 
-// The largest inset that still leaves a shape, found by halving the search range.
-function maxInset(poly: Polygon, upTo: number): number {
-  let lo = 0, hi = upTo
-  for (let i = 0; i < 16; i++) {
+// The largest inset between lo and hi that still leaves a shape, found by halving the range.
+function maxInset(poly: Polygon, lo: number, hi: number): number {
+  for (let i = 0; i < 12; i++) {
     const mid = (lo + hi) / 2
     if (insetConvex(poly, mid).length) lo = mid
     else hi = mid
@@ -24,13 +23,15 @@ export function makeHole(cell: Polygon, index: number, settings: HoleSettings): 
   if (poly.length < 3) return null
   const half = Math.max(0, settings.web / 2)
   // A hole can be at most the cell's width less the web, so cells that can't reach the smallest hole stop here.
-  if (minWidth(poly) - 2 * half < Math.max(settings.minHole, 1e-9)) return null
+  const cellWidth = minWidth(poly)
+  if (cellWidth - 2 * half < Math.max(settings.minHole, 1e-9)) return null
   let radius = Math.max(0, settings.radius)
-  let core = insetConvex(poly, half + radius)
+  // No shape survives an inset of half its width or more, so skip straight to fitting the radius.
+  let core = half + radius < cellWidth / 2 ? insetConvex(poly, half + radius) : []
   if (!core.length) {
     // The corners are rounder than the hole is wide: use the largest radius that fits.
-    const limit = maxInset(poly, half + radius)
-    if (limit <= half + 1e-6) return null
+    if (!insetConvex(poly, half).length) return null
+    const limit = maxInset(poly, half, Math.min(half + radius, cellWidth / 2))
     radius = (limit - half) * 0.98
     core = insetConvex(poly, half + radius)
     if (!core.length) return null

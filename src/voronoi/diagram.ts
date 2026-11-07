@@ -2,14 +2,50 @@
 // cells inside the region's box; ellipses are then clipped against a 256-sided polygon.
 import { Delaunay } from 'd3-delaunay'
 import { clipConvex, normalize, type Polygon, type Segment } from './geometry'
-import { contains, regionArea, regionPolygon, type Region } from './region'
+import { contains, regionArea, regionCenter, regionHeight, regionPolygon, regionWidth, type Region } from './region'
 
 export type Cells = (Polygon | null)[]
+type Voronoi = ReturnType<Delaunay<Float64Array>['voronoi']>
 
 export function buildCells(points: Float64Array, region: Region): Cells {
   const n = points.length / 2
   if (n === 0) return []
+  return cellsOf(new Delaunay(points).voronoi([region.x0, region.y0, region.x1, region.y1]), n, region)
+}
+
+// Cells and each inner edge once, for drawing and cutting. d3 lists every shared edge exactly once, which
+// is much faster than matching the edges of neighbouring cells.
+export function buildDiagram(points: Float64Array, region: Region): { cells: Cells; internal: Segment[] } {
+  const n = points.length / 2
+  if (n === 0) return { cells: [], internal: [] }
   const voronoi = new Delaunay(points).voronoi([region.x0, region.y0, region.x1, region.y1])
+  const raw: Segment[] = []
+  let x = 0, y = 0
+  voronoi.render({ moveTo(px: number, py: number) { x = px; y = py }, lineTo(px: number, py: number) { raw.push([x, y, px, py]); x = px; y = py } })
+  const internal: Segment[] = []
+  for (const s of raw) {
+    const clipped = region.shape === 'ellipse' ? clipToEllipse(s, region) : s
+    if (clipped && Math.hypot(clipped[2] - clipped[0], clipped[3] - clipped[1]) > 1e-9) internal.push(clipped)
+  }
+  return { cells: cellsOf(voronoi, n, region), internal }
+}
+
+// The part of a segment inside the region's ellipse, or null.
+function clipToEllipse(s: Segment, region: Region): Segment | null {
+  const [cx, cy] = regionCenter(region), rx = regionWidth(region) / 2, ry = regionHeight(region) / 2
+  const ux = (s[0] - cx) / rx, uy = (s[1] - cy) / ry, dx = (s[2] - s[0]) / rx, dy = (s[3] - s[1]) / ry
+  const a = dx * dx + dy * dy, b = 2 * (ux * dx + uy * dy), c = ux * ux + uy * uy - 1
+  if (a < 1e-18) return c <= 0 ? s : null
+  const disc = b * b - 4 * a * c
+  if (disc <= 0) return null
+  const root = Math.sqrt(disc)
+  const t0 = Math.max(0, (-b - root) / (2 * a)), t1 = Math.min(1, (-b + root) / (2 * a))
+  if (t1 <= t0) return null
+  const ex = s[2] - s[0], ey = s[3] - s[1]
+  return [s[0] + ex * t0, s[1] + ey * t0, s[0] + ex * t1, s[1] + ey * t1]
+}
+
+function cellsOf(voronoi: Voronoi, n: number, region: Region): Cells {
   const clip = region.shape === 'ellipse' ? regionPolygon(region) : null
   const cells: Cells = new Array(n)
   for (let i = 0; i < n; i++) {
@@ -32,8 +68,8 @@ export function nearestPoint(points: Float64Array, x: number, y: number): { inde
   return { index, distance: Math.sqrt(best) }
 }
 
-// Each edge once. Edges shared by two cells are inside the pattern; edges used by one cell lie on the
-// region's boundary. Shared edges have identical end points in d3's output, so a rounded key matches them.
+// Each edge once, found by matching cell sides. Edges shared by two cells are inside the pattern; edges used
+// by one cell lie on the region's boundary. Slower than buildDiagram, so the tests use it as a check.
 export function uniqueEdges(cells: Cells): { internal: Segment[]; boundary: Segment[] } {
   const seen = new Map<string, { s: Segment; n: number }>()
   const key = (x: number, y: number) => `${Math.round(x * 1e5)},${Math.round(y * 1e5)}`

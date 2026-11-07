@@ -1,6 +1,6 @@
 // Everything drawn or exported for one design, built from the points and the settings in one place, so the
 // preview, the PNG, the SVGs and the DXF always agree.
-import { buildCells, delaunayEdges, uniqueEdges, type Cells } from './diagram'
+import { buildDiagram, delaunayEdges, type Cells } from './diagram'
 import { area, segmentLength, type Segment } from './geometry'
 import { makeHole, type Hole } from './holes'
 import { insetRegion, regionPerimeter, sheetRegion, type Region, type Shape } from './region'
@@ -23,7 +23,7 @@ export type Geometry = {
   sheet: Region
   region: Region
   cells: Cells
-  edges: { internal: Segment[]; boundary: Segment[] }
+  edges: { internal: Segment[] }
   holes: Hole[]
   delaunay: Segment[]
   metrics: Metrics
@@ -39,8 +39,8 @@ export function patternRegion(s: Pick<PatternSettings, 'width' | 'height' | 'sha
 export function buildGeometry(points: Float64Array, s: PatternSettings): Geometry {
   const sheet = sheetRegion(s.width, s.height, s.shape)
   const region = patternRegion(s)
-  const cells = buildCells(points, region)
-  const edges = uniqueEdges(cells)
+  const { cells, internal } = buildDiagram(points, region)
+  const edges = { internal }
   const holes: Hole[] = []
   let dropped = 0
   if (s.cellStyle === 'holes') {

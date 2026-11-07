@@ -37,6 +37,13 @@ export function formatLength(mm: number, units: Units, dpi: number, small = fals
   return `${trimZeros(value.toFixed(decimals(units, small)))} ${UNIT_LABEL[units]}`
 }
 
+// Like formatLength, but a tiny non-zero length reads "under 0.01 mm" instead of "0 mm".
+export function formatSmall(mm: number, units: Units, dpi: number): string {
+  const digits = decimals(units, true)
+  if (mm > 0 && Number(toUnits(mm, units, dpi).toFixed(digits)) === 0) return `under ${10 ** -digits} ${UNIT_LABEL[units]}`
+  return formatLength(mm, units, dpi, true)
+}
+
 export function trimZeros(text: string): string {
   return text.includes('.') ? text.replace(/\.?0+$/, '') : text
 }

@@ -5,7 +5,7 @@ import { emptyHistory, record, redo, undo } from './history'
 import { matchPreset, presetSize, SHEET_PRESETS } from './presets'
 import { parseProject, ProjectError, serializeProject } from './project'
 import { DEFAULTS, sanitizeSettings } from './settings'
-import { formatLength, formatLong, fromUnits, pixelSize, toUnits } from './units'
+import { formatLength, formatLong, formatSmall, fromUnits, pixelSize, toUnits } from './units'
 
 describe('project files', () => {
   it('round-trips settings and hand-edited points', () => {
@@ -54,6 +54,8 @@ describe('units and presets', () => {
     expect(formatLength(12.5, 'mm', 300)).toBe('12.5 mm')
     expect(formatLength(25.4, 'in', 300)).toBe('1 in')
     expect(formatLong(4820, 'mm')).toBe('4.82 m')
+    expect(formatSmall(0.001, 'mm', 300)).toBe('under 0.01 mm')
+    expect(formatSmall(0, 'mm', 300)).toBe('0 mm')
     expect(pixelSize(200, 200, 300)).toEqual([2362, 2362])
   })
 

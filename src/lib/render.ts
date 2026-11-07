@@ -56,16 +56,26 @@ export function drawDesign(ctx: CanvasRenderingContext2D, g: Geometry, points: F
 
   ctx.save()
   ctx.beginPath(); regionPath(ctx, g.sheet); ctx.clip()
-  ctx.lineCap = 'round'; ctx.lineJoin = 'round'
+  // Round caps cost about 40 % more to draw; on big previews they're invisible at screen size.
+  const many = o.preview && g.edges.internal.length > 4000
+  ctx.lineCap = many ? 'butt' : 'round'; ctx.lineJoin = 'round'
   const lineWidth = Math.max(s.lineWidth, minLine)
 
   if (s.showEdges) {
-    ctx.beginPath()
-    if (s.cellStyle === 'holes') for (const hole of g.holes) outlinePath(ctx, hole.outline)
-    else regionPath(ctx, g.region)
-    if (s.fill) { ctx.fillStyle = s.fillColor; ctx.fill() }
-    if (s.cellStyle === 'lines') segmentsPath(ctx, g.edges.internal)
-    ctx.strokeStyle = s.lineColor; ctx.lineWidth = lineWidth; ctx.stroke()
+    ctx.strokeStyle = s.lineColor; ctx.lineWidth = lineWidth; ctx.fillStyle = s.fillColor
+    if (s.cellStyle === 'holes') {
+      // One path per hole: browsers slow down sharply on a single path with tens of thousands of arcs.
+      for (const hole of g.holes) {
+        ctx.beginPath(); outlinePath(ctx, hole.outline)
+        if (s.fill) ctx.fill()
+        ctx.stroke()
+      }
+    } else {
+      ctx.beginPath(); regionPath(ctx, g.region)
+      if (s.fill) ctx.fill()
+      segmentsPath(ctx, g.edges.internal)
+      ctx.stroke()
+    }
   }
 
   if (s.showDelaunay && g.delaunay.length) {
@@ -75,9 +85,15 @@ export function drawDesign(ctx: CanvasRenderingContext2D, g: Geometry, points: F
 
   if (s.showSites && points.length) {
     const r = Math.max(siteRadius(g.region, points.length / 2), o.preview ? 1.3 * px : 0)
-    ctx.beginPath()
-    for (let i = 0; i < points.length; i += 2) { ctx.moveTo(points[i] + r, points[i + 1]); ctx.arc(points[i], points[i + 1], r, 0, Math.PI * 2) }
-    ctx.fillStyle = SITE_COLOR; ctx.fill()
+    ctx.fillStyle = SITE_COLOR
+    if (o.preview && r < 2 * px) {
+      // Dots under two pixels look the same as squares and draw many times faster.
+      for (let i = 0; i < points.length; i += 2) ctx.fillRect(points[i] - r, points[i + 1] - r, r * 2, r * 2)
+    } else {
+      ctx.beginPath()
+      for (let i = 0; i < points.length; i += 2) { ctx.moveTo(points[i] + r, points[i + 1]); ctx.arc(points[i], points[i + 1], r, 0, Math.PI * 2) }
+      ctx.fill()
+    }
   }
   ctx.restore()
 

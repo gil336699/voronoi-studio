@@ -10,7 +10,7 @@ const STYLES: Option<CellStyle>[] = [
 ]
 
 // Memoised: the panel only re-renders when its own props change, not on every relax step.
-export const StylePanel = memo(function StylePanel({ s, change }: { s: Settings; change: Change }) {
+export const StylePanel = memo(function StylePanel({ s, change, holes, dropped }: { s: Settings; change: Change; holes: number; dropped: number }) {
   const len = { units: s.units, dpi: s.dpi, small: true }
   return <>
     <Section title="Cells">
@@ -25,6 +25,9 @@ export const StylePanel = memo(function StylePanel({ s, change }: { s: Settings;
           tip="Rounds the corners of each hole. Small holes get the largest radius that fits. Match your end mill radius for CNC." onChange={cornerRadius => change({ cornerRadius }, 'cornerRadius')} />
         <LengthField label="Smallest hole" mm={s.minHole} min={RANGES.minHole[0]} max={RANGES.minHole[1]} {...len}
           tip="Holes narrower than this are left solid, so tiny slivers don't burn or break." onChange={minHole => change({ minHole }, 'minHole')} />
+        {holes === 0 && dropped > 0
+          ? <div className="notice" role="status"><p>No holes fit: the web or the smallest hole is wider than the cells. Use a thinner web, a smaller smallest hole, or fewer cells.</p></div>
+          : dropped > 0 && <p className="hint">{dropped.toLocaleString()} {dropped === 1 ? 'cell is' : 'cells are'} left solid because {dropped === 1 ? 'it is' : 'they are'} narrower than the smallest hole.</p>}
       </>}
     </Section>
 

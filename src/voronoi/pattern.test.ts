@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { DensitySettings } from './density'
-import { buildCells, delaunayEdges, nearestPoint, uniqueEdges } from './diagram'
+import { buildCells, buildDiagram, delaunayEdges, nearestPoint, uniqueEdges } from './diagram'
 import { area } from './geometry'
 import { arcFromBulge, makeHole, outlineLength } from './holes'
 import { buildGeometry, patternRegion, type PatternSettings } from './pattern'
@@ -104,6 +104,14 @@ describe('diagram', () => {
     const { internal, boundary } = uniqueEdges(cells)
     expect(internal.length * 2 + boundary.length).toBe(sides)
     expect(boundary.reduce((a, s) => a + Math.hypot(s[2] - s[0], s[3] - s[1]), 0)).toBeCloseTo(800, 6)
+    // d3's own edge list matches the edges found by matching cell sides, in rectangles and ellipses.
+    const length = (list: number[][]) => list.reduce((a, s) => a + Math.hypot(s[2] - s[0], s[3] - s[1]), 0)
+    const fast = buildDiagram(points, sheet).internal
+    expect(fast.length).toBe(internal.length)
+    expect(length(fast)).toBeCloseTo(length(internal), 6)
+    const ovalPoints = seedPoints(seed(), oval).points
+    const slow = uniqueEdges(buildCells(ovalPoints, oval)).internal, quick = buildDiagram(ovalPoints, oval).internal
+    expect(Math.abs(length(quick) - length(slow)) / length(slow)).toBeLessThan(1e-3)
   })
 
   it('finds the nearest point', () => {

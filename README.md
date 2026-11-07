@@ -140,14 +140,19 @@ On Windows and Linux, use Ctrl for ⌘. Space pans, as in most design tools, rat
 
 ## Known limits
 
-Measured on an Apple-silicon Mac in Node 26 and Chrome (Code tab preview), for a 600 × 400 mm panel with an 8× linear gradient:
+Measured on an Apple-silicon Mac, in the app (Chrome, Code tab preview, 1280 × 800) and in Node 26 for the engine alone:
 
-| Task | 1,500 cells | 10,000 cells |
-| --- | --- | --- |
-| Make points (Even) | 25 ms | 170 ms |
-| One relaxation step | 3 ms | 12 ms |
-| Rebuild holes and measurements | 14 ms | 85 ms |
-| Auto-relax in the app | about 20 steps a second | slower; best for a few steps |
+| Task | 300 cells | 1,500 cells | 10,000 cells |
+| --- | --- | --- | --- |
+| Make points, Even, in the worker (Node) | 4 ms | 25 ms | 170 ms |
+| One relaxation step (Node) | under 1 ms | 3 ms | 12 ms |
+| Rebuild holes and measurements (Node) | 2 ms | 11 ms | 55 ms |
+| One update while dragging a point (app, Holes) | 9 ms | 23 ms | 234 ms |
+| One update while dragging a point (app, Lines with Delaunay) | — | — | 78 ms |
+| Auto-relax speed (app, Holes) | 55 steps/s | 32 steps/s | 3.5 steps/s |
+| Auto-relax until settled (app) | 716 steps, 14 s (369 random points) | 1,130 steps, about 60 s (8× gradient) | not measured |
+
+Patterns up to a few thousand cells stay smooth. At 10,000 cells, editing by hand and auto-relaxing are slow; set the relax steps and press Relax instead.
 
 - Up to 10,000 cells can be typed; spacing-driven placements stop at 20,000 points.
 - PNG export is limited to 16,384 px a side and 120 megapixels, which browsers can draw. Use SVG for larger work.

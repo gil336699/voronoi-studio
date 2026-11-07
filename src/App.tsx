@@ -234,7 +234,7 @@ export function App() {
           autoSpacingValue={design.spacing || autoSpacingFor(s)} exactSpacing={exactSpacing} capped={design.capped} onShuffle={generateNew} />
       </TabPanel>
       <TabPanel idBase="design" id="sheet" value={tab}><SheetPanel s={s} change={design.change} /></TabPanel>
-      <TabPanel idBase="design" id="style" value={tab}><StylePanel s={s} change={design.change} /></TabPanel>
+      <TabPanel idBase="design" id="style" value={tab}><StylePanel s={s} change={design.change} holes={geometry.metrics.holes} dropped={geometry.metrics.dropped} /></TabPanel>
       <TabPanel idBase="design" id="file" value={tab}>
         <FilePanel s={s} change={design.change} unsaved={design.unsaved} busy={design.busy} openError={openError}
           onNew={newDesign} onOpen={openProject} onSave={() => void saveProject()} onExport={kind => void exportFile(kind)} />
