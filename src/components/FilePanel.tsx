@@ -1,7 +1,9 @@
 import { memo } from 'react'
+import { cutContents, cutLayers, listWords } from '../lib/cutPaths'
 import { pngProblem } from '../lib/render'
 import type { Settings } from '../lib/settings'
 import { pixelSize, UNIT_NAME } from '../lib/units'
+import { holeCount } from '../voronoi/shape'
 import { Button, Section, SwitchField } from './Controls'
 import type { Change } from './PatternPanel'
 
@@ -16,6 +18,9 @@ export const FilePanel = memo(function FilePanel({ s, change, unsaved, busy, onN
   const pngBlocked = pngProblem(pw, ph)
   const fileUnits = s.units === 'in' ? 'inches' : 'millimetres'
   const working = busy && 'Wait for the pattern to finish updating.'
+  const contents = cutContents(s)
+  const nothing = !contents.length && `Nothing to cut. Turn on Sites, ${s.cellStyle === 'holes' ? 'Holes' : 'Edges'} or Delaunay above the sheet, or include the sheet outline.`
+  const layers = cutLayers(s, s.shape === 'custom' && !!s.customShape && holeCount(s.customShape) > 0)
   return <>
     <Section title="Project">
       <p className="hint save-state">{unsaved ? <><span className="dot" aria-hidden="true" />Unsaved changes since the last save.</> : 'All changes saved.'}</p>
@@ -29,12 +34,12 @@ export const FilePanel = memo(function FilePanel({ s, change, unsaved, busy, onN
 
     <Section title="For cutting">
       <div className="button-row">
-        <Button tip={`Red hairline cut paths in ${fileUnits} at real size, holes first, for LightBurn, Glowforge and other laser software.`} unavailable={working} onClick={() => onExport('laser')}>Laser SVG</Button>
-        <Button tip={`AutoCAD R12 DXF in ${fileUnits}, with rounded corners as true arcs, for Fusion, Illustrator, VCarve and CAM.`} unavailable={working} onClick={() => onExport('dxf')}>DXF</Button>
+        <Button tip={`Hairline paths in ${fileUnits} at real size for LightBurn, Glowforge and other laser software: cuts in red, holes first, with sites and Delaunay lines in their own colours if shown.`} unavailable={working || nothing} onClick={() => onExport('laser')}>Laser SVG</Button>
+        <Button tip={`AutoCAD R12 DXF in ${fileUnits}, with rounded corners as true arcs and sites and Delaunay lines on their own layers if shown, for Fusion, Illustrator, VCarve and CAM.`} unavailable={working || nothing} onClick={() => onExport('dxf')}>DXF</Button>
       </div>
       <SwitchField label="Include the sheet outline" checked={s.sheetOutline}
         tip="Add the sheet's edge as the outer cut, on its own layer after the inner cuts." onChange={sheetOutline => change({ sheetOutline }, 'sheetOutline')} />
-      <p className="hint">Cut files contain each line once. Holes go on layer CUT_INNER, the outline on CUT_OUTER.</p>
+      <p className="hint">{nothing || <>Cut files hold what the view shows: {listWords(contents)}, each line once. Layers: {listWords(layers)}.</>}</p>
     </Section>
 
     <Section title="For artwork">

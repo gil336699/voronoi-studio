@@ -40,7 +40,7 @@ export const StylePanel = memo(function StylePanel({ s, change, holes, dropped }
       {s.fill && <ColorField label="Fill colour" value={s.fillColor} tip="Colour inside the cells." onChange={fillColor => change({ fillColor }, 'fillColor')} />}
       <ColorField label={s.cellStyle === 'holes' ? 'Material colour' : 'Background'} value={s.background}
         tip="Colour of the sheet behind the pattern." onChange={background => change({ background }, 'background')} />
-      <p className="hint">Sites, edges and Delaunay lines switch on and off in the bar above the sheet.</p>
+      <p className="hint">Sites, edges and Delaunay lines switch on and off in the bar above the sheet, in the view and in every export.</p>
     </Section>
   </>
 })

@@ -115,10 +115,12 @@ export function uniqueEdges(cells: Cells): { internal: Segment[]; boundary: Segm
 }
 
 // Delaunay edges, as the old Voronoi Lab drew them: long stretched edges along the hull and edges whose
-// middle falls outside the region are left out, so the border doesn't fill with dark bands.
+// middle falls outside the region are left out, so the border doesn't fill with dark bands. In a custom
+// shape, the rest are clipped to it, so no line crosses one of its holes or notches.
 export function delaunayEdges(points: Float64Array, region: Region): Segment[] {
   const n = points.length / 2
   if (n < 2) return []
+  const shape = region.shape === 'custom' ? shapeIndex(region.rings ?? []) : null
   const { triangles } = new Delaunay(points)
   const typical = Math.sqrt(regionArea(region) / (Math.PI * n)) * 0.9
   const maxLength = typical * 4
@@ -134,7 +136,8 @@ export function delaunayEdges(points: Float64Array, region: Region): Segment[] {
       const x0 = points[lo * 2], y0 = points[lo * 2 + 1], x1 = points[hi * 2], y1 = points[hi * 2 + 1]
       if (Math.hypot(x1 - x0, y1 - y0) > maxLength) continue
       if (!contains(region, (x0 + x1) / 2, (y0 + y1) / 2)) continue
-      out.push([x0, y0, x1, y1])
+      if (shape) out.push(...shape.clipSegment([x0, y0, x1, y1]))
+      else out.push([x0, y0, x1, y1])
     }
   }
   return out

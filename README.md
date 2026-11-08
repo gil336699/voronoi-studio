@@ -97,13 +97,13 @@ Where a cell wraps right round a hole in the shape, the app leaves a bridge of w
 
 | Export | Contents | Units |
 | --- | --- | --- |
-| Laser SVG | Cut paths only, as 0.025 mm red hairlines with no fill. Holes in group `cut-inner` (with an imported shape's own holes), the sheet outline in `cut-outer`, inner cuts first. | mm, or in for inch sheets |
-| DXF | AutoCAD R12 text. Holes as closed polylines whose rounded corners are true arcs, lines as LINE, round sheets as CIRCLE, imported outlines as polylines. Layers `CUT_INNER` and `CUT_OUTER`. | mm, or in for inch sheets |
+| Laser SVG | 0.025 mm hairlines with no fill. Cuts in red: holes or cell edges in group `cut-inner` (with an imported shape's own holes), the sheet outline in `cut-outer`. When shown, sites as green circles in `sites` and Delaunay lines in magenta in `delaunay`. Marks first, then inner cuts, then the outline. | mm, or in for inch sheets |
+| DXF | AutoCAD R12 text. Holes as closed polylines whose rounded corners are true arcs, lines as LINE, round sheets as CIRCLE, imported outlines as polylines. Layers `CUT_INNER` (red) and `CUT_OUTER` (blue); when shown, sites as CIRCLE on `SITES` (green) and Delaunay lines as LINE on `DELAUNAY` (magenta). | mm, or in for inch sheets |
 | SVG | The design as shown: colours, line width, fill, background, sites and Delaunay lines if visible. | mm, in, or px for pixel sheets |
 | PNG | The design at the sheet's pixels per inch, optionally with a transparent background. | px |
 | Project | Settings, every point and any imported shape, as `.voronoi.json` (schema `voronoi-studio/project`, version 2; version 1 files open too). | mm |
 
-Cut files contain each line once, so a laser never cuts the same edge twice. Exports always show the whole sheet, whatever the zoom.
+Every export holds what the view shows: the **Sites**, **Edges** or **Holes**, and **Delaunay** buttons above the sheet decide what goes in, so turn Sites off for a file with only cuts. The File tab lists what a cut file will hold. Cut files contain each line once, so a laser never cuts the same edge twice. Exports always show the whole sheet, whatever the zoom.
 
 ## Controls
 
@@ -125,6 +125,7 @@ Cut files contain each line once, so a laser never cuts the same edge twice. Exp
 | Web width, Corner radius, Smallest hole | Holes only: material between holes, corner rounding, and the narrowest hole kept. |
 | Line width, colours, fill | Appearance in the preview, PNG and artwork SVG. Laser files always use hairlines. |
 | Include the sheet outline | Adds the sheet edge as the outer cut in Laser SVG and DXF. |
+| Sites, Edges or Holes, Delaunay | Show or hide each part of the design, in the view and in every export. |
 
 ## Keyboard shortcuts
 

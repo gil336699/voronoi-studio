@@ -98,16 +98,34 @@ describe('custom sheet shapes', () => {
 
   it('exports the outline as the outer cut and its hole as an inner cut', () => {
     const s = { ...settings, cellStyle: 'holes' as const }
-    const g = buildGeometry(seedPoints(seed(), patternRegion(s)).points, s)
-    const laser = laserSvg(g, s)
+    const { points } = seedPoints(seed(), patternRegion(s))
+    const g = buildGeometry(points, s)
+    const laser = laserSvg(g, points, s)
     const outer = /<g id="cut-outer"[^>]*>(.*?)<\/g>/s.exec(laser)![1]
     expect(outer.match(/<path /g)).toHaveLength(1)
     expect(outer).toContain('fill-rule="evenodd"')
     const inner = /<g id="cut-inner"[^>]*>(.*?)<\/g>/s.exec(laser)![1]
     expect(inner.match(/<path /g)!.length).toBe(g.holes.length + 1)
-    const dxf = cutDxf(g, s)
+    const dxf = cutDxf(g, points, s)
     expect(dxf.split('\nCUT_OUTER\n').length - 1).toBeGreaterThan(10) // the outline's polyline and its vertices
     expect(dxf.match(/\nPOLYLINE\n/g)).toHaveLength(g.holes.length + 2)
+  })
+
+  it('clips Delaunay lines to the shape, so none crosses a notch', () => {
+    // A 160 × 80 sheet with a 4 mm slot cut down from the top to y = 60. The edge from A to B has its middle
+    // below the slot but passes over the slot's bottom corner.
+    const slot = shapeFromOutlines([[[0, 0], [78, 0], [78, 60], [82, 60], [82, 0], [160, 0], [160, 80], [0, 80]]], 'slot')
+    const s: Settings = { ...DEFAULTS, width: 160, height: 80, shape: 'custom', customShape: slot, border: 0, showDelaunay: true }
+    const region = patternRegion(s)
+    const points = Float64Array.from([74, 58, 86, 63, 80, 75])
+    const g = buildGeometry(points, s)
+    expect(g.delaunay.length).toBeGreaterThanOrEqual(3)
+    for (const [x0, y0, x1, y1] of g.delaunay) {
+      for (let i = 1; i < 20; i++) {
+        const t = i / 20, x = x0 + (x1 - x0) * t, y = y0 + (y1 - y0) * t
+        expect(contains(region, x, y)).toBe(true)
+      }
+    }
   })
 
   it('saves the shape in version 2 project files and rejects damaged shapes', () => {

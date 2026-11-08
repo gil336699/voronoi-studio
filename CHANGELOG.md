@@ -1,5 +1,11 @@
 # Voronoi Studio Changelog
 
+## 1.2.0 2026-11-08
+
+- **Exports follow the view.** Laser SVG and DXF now hold what the Sites, Edges or Holes, and Delaunay buttons show, as the artwork SVG and PNG already did. Sites are green circles (layer `SITES` in DXF) and Delaunay lines are magenta (layer `DELAUNAY`), ahead of the red cuts, so laser software can score, engrave or skip them. Hiding Holes or Edges leaves the cells out of the cut file. Sites are shown by default, so turn them off for a file with only cuts.
+- The File tab lists what a cut file will hold, and Laser SVG and DXF say why they're unavailable when nothing is shown.
+- Delaunay lines in an imported shape are clipped to it, so none crosses a notch or one of its holes.
+
 ## 1.1.0 2026-11-07
 
 - **Your own sheet shape.** Press **Import SVG shape…** on the Sheet tab, or drop an SVG on the window, and the pattern fills that outline. Outlines inside it become holes, with the border kept round them too. It works with Lines and Holes, gradients, relaxation, hand edits and every export.

@@ -1,6 +1,7 @@
 // DXF for CAD and CAM (Fusion, Illustrator, LightBurn, VCarve). Written as AutoCAD R12 text, the most
-// widely readable version. Holes are closed polylines whose rounded corners are true arcs (bulges).
-// DXF's y axis points up, so y is flipped and arcs change direction.
+// widely readable version. Holes are closed polylines whose rounded corners are true arcs (bulges). Sites
+// and Delaunay lines, when shown, go on their own layers. DXF's y axis points up, so y is flipped and arcs
+// change direction.
 import type { Segment } from '../voronoi/geometry'
 import type { Outline } from '../voronoi/holes'
 import type { Geometry } from '../voronoi/pattern'
@@ -10,8 +11,11 @@ import type { Settings } from './settings'
 
 export const LAYER_INNER = 'CUT_INNER'
 export const LAYER_OUTER = 'CUT_OUTER'
+export const LAYER_SITES = 'SITES'
+export const LAYER_DELAUNAY = 'DELAUNAY'
 
-export function cutDxf(g: Geometry, s: Settings): string {
+export function cutDxf(g: Geometry, points: Float64Array, s: Settings): string {
+  const cut = cutPaths(g, points, s)
   const inches = s.units === 'in'
   const k = inches ? 1 / 25.4 : 1
   const X = (x: number) => num(x * k, 4), Y = (y: number) => num((s.height - y) * k, 4)
@@ -27,8 +31,12 @@ export function cutDxf(g: Geometry, s: Settings): string {
   pair(0, 'ENDSEC')
 
   pair(0, 'SECTION'); pair(2, 'TABLES')
-  pair(0, 'TABLE'); pair(2, 'LAYER'); pair(70, 2)
-  for (const [name, colour] of [[LAYER_INNER, 1], [LAYER_OUTER, 5]] as const) {
+  // Colours are AutoCAD's: 1 red, 3 green, 5 blue, 6 magenta.
+  const layers: [string, number][] = [[LAYER_INNER, 1], [LAYER_OUTER, 5]]
+  if (cut.sites) layers.push([LAYER_SITES, 3])
+  if (cut.delaunay.length) layers.push([LAYER_DELAUNAY, 6])
+  pair(0, 'TABLE'); pair(2, 'LAYER'); pair(70, layers.length)
+  for (const [name, colour] of layers) {
     pair(0, 'LAYER'); pair(2, name); pair(70, 0); pair(62, colour); pair(6, 'CONTINUOUS')
   }
   pair(0, 'ENDTAB'); pair(0, 'ENDSEC')
@@ -55,7 +63,13 @@ export function cutDxf(g: Geometry, s: Settings): string {
     for (const ring of regionRings(r)) polyline({ points: ring, bulges: ring.map(() => 0) }, layer)
   }
 
-  const cut = cutPaths(g, s)
+  for (const segment of cut.delaunay) line(segment, LAYER_DELAUNAY)
+  if (cut.sites) {
+    const { points: p, r } = cut.sites
+    for (let i = 0; i < p.length; i += 2) {
+      pair(0, 'CIRCLE'); pair(8, LAYER_SITES); pair(10, X(p[i])); pair(20, Y(p[i + 1])); pair(30, 0); pair(40, num(r * k, 4))
+    }
+  }
   for (const outline of cut.outlines) polyline(outline, LAYER_INNER)
   for (const segment of cut.lines) line(segment, LAYER_INNER)
   for (const r of cut.inner) region(r, LAYER_INNER)

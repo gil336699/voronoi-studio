@@ -1,5 +1,6 @@
-// SVG files at real size. "Artwork" looks like the preview; "laser" has only cut lines, as red
-// hairlines with no fill, which laser software such as LightBurn and Glowforge reads as cuts.
+// SVG files at real size. "Artwork" looks like the preview; "laser" has hairlines with no fill, which laser
+// software such as LightBurn and Glowforge reads by colour: cuts in red, and sites and Delaunay lines, when
+// shown, in their own colours so they can be scored, engraved or skipped.
 import type { Polygon, Segment } from '../voronoi/geometry'
 import type { Outline } from '../voronoi/holes'
 import type { Geometry } from '../voronoi/pattern'
@@ -8,7 +9,9 @@ import { cutPaths, num } from './cutPaths'
 import { DELAUNAY_COLOR, SITE_COLOR, siteRadius } from './style'
 import type { Settings } from './settings'
 
-const LASER_RED = '#ff0000'
+export const LASER_RED = '#ff0000'
+export const LASER_SITES = '#00ff00'
+export const LASER_DELAUNAY = '#ff00ff'
 const HAIRLINE_MM = 0.025
 
 // Physical size attributes. Inches stay inches; everything else is written in millimetres, except
@@ -82,15 +85,25 @@ export function artworkSvg(g: Geometry, points: Float64Array, s: Settings): stri
   return `${svg}</svg>\n`
 }
 
-export function laserSvg(g: Geometry, s: Settings): string {
-  const cut = cutPaths(g, s)
-  const style = `fill="none" stroke="${LASER_RED}" stroke-width="${HAIRLINE_MM}"`
+export function laserSvg(g: Geometry, points: Float64Array, s: Settings): string {
+  const cut = cutPaths(g, points, s)
+  const hairline = (colour: string) => `fill="none" stroke="${colour}" stroke-width="${HAIRLINE_MM}"`
+  const style = hairline(LASER_RED)
   let svg = header(s, false, 'Voronoi Studio cut lines')
-  svg += `<g id="cut-inner" ${style}>\n`
-  for (const outline of cut.outlines) svg += `<path d="${outlinePath(outline)}"/>\n`
-  if (cut.lines.length) svg += `<path d="${segmentsPath(cut.lines)}"/>\n`
-  for (const r of cut.inner) svg += `${regionElement(r, '')}\n`
-  svg += `</g>\n`
+  if (cut.delaunay.length) svg += `<g id="delaunay" ${hairline(LASER_DELAUNAY)}><path d="${segmentsPath(cut.delaunay)}"/></g>\n`
+  if (cut.sites) {
+    const { points: p, r } = cut.sites
+    svg += `<g id="sites" ${hairline(LASER_SITES)}>\n`
+    for (let i = 0; i < p.length; i += 2) svg += `<circle cx="${num(p[i])}" cy="${num(p[i + 1])}" r="${num(r)}"/>\n`
+    svg += `</g>\n`
+  }
+  if (cut.outlines.length || cut.lines.length || cut.inner.length) {
+    svg += `<g id="cut-inner" ${style}>\n`
+    for (const outline of cut.outlines) svg += `<path d="${outlinePath(outline)}"/>\n`
+    if (cut.lines.length) svg += `<path d="${segmentsPath(cut.lines)}"/>\n`
+    for (const r of cut.inner) svg += `${regionElement(r, '')}\n`
+    svg += `</g>\n`
+  }
   if (cut.outer.length) svg += `<g id="cut-outer" ${style}>${cut.outer.map(r => regionElement(r, '')).join('')}</g>\n`
   return `${svg}</svg>\n`
 }

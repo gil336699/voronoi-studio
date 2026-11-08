@@ -202,8 +202,8 @@ export function App() {
   const exportFile = async (kind: ExportKind) => {
     const base = baseName(s)
     if (kind === 'svg') report(`${base}.svg`, await saveFile(`${base}.svg`, artworkSvg(geometry, doc.points, s), 'image/svg+xml', 'SVG image'))
-    if (kind === 'laser') report(`${base}-cut.svg`, await saveFile(`${base}-cut.svg`, laserSvg(geometry, s), 'image/svg+xml', 'SVG cut file'))
-    if (kind === 'dxf') report(`${base}.dxf`, await saveFile(`${base}.dxf`, cutDxf(geometry, s), 'application/dxf', 'DXF drawing'))
+    if (kind === 'laser') report(`${base}-cut.svg`, await saveFile(`${base}-cut.svg`, laserSvg(geometry, doc.points, s), 'image/svg+xml', 'SVG cut file'))
+    if (kind === 'dxf') report(`${base}.dxf`, await saveFile(`${base}.dxf`, cutDxf(geometry, doc.points, s), 'application/dxf', 'DXF drawing'))
     if (kind === 'png') {
       const [w, h] = pixelSize(s.width, s.height, s.dpi)
       const problem = pngProblem(w, h)
