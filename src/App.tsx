@@ -14,12 +14,14 @@ import { pngProblem, renderPng } from './lib/render'
 import { saveFile } from './lib/saveFile'
 import { DEFAULTS, seedSettings, type Settings } from './lib/settings'
 import { artworkSvg, laserSvg } from './lib/svgExport'
+import { readSvgOutlines, SvgShapeError } from './lib/svgShape'
 import { pixelSize, trimZeros, toUnits, UNIT_LABEL } from './lib/units'
 import { freshDoc, spacingOf, useDesign, type Doc, type Status } from './useDesign'
 import { integrateDensity, densityField } from './voronoi/density'
 import { buildGeometry, patternRegion } from './voronoi/pattern'
 import { randomSeed } from './voronoi/random'
 import { contains, regionArea } from './voronoi/region'
+import { shapeFromOutlines, ShapeError } from './voronoi/shape'
 
 type TabId = 'pattern' | 'sheet' | 'style' | 'file'
 const SESSION_KEY = 'voronoi-studio:session'
@@ -75,6 +77,7 @@ export function App() {
   const frameRef = useRef<HTMLDivElement>(null)
   const stageRef = useRef<StageControls | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
+  const shapeInput = useRef<HTMLInputElement>(null)
 
   // Routine messages fade back to the cell count; warnings stay until something else happens.
   useEffect(() => {
@@ -84,9 +87,9 @@ export function App() {
   }, [status])
 
   // Geometry depends on a few settings only, so colour and visibility changes don't rebuild it.
-  const { width, height, shape, border, cellStyle, web, cornerRadius, minHole, showDelaunay } = s
-  const patternSettings = useMemo(() => ({ width, height, shape, border, cellStyle, web, cornerRadius, minHole, showDelaunay }),
-    [width, height, shape, border, cellStyle, web, cornerRadius, minHole, showDelaunay])
+  const { width, height, shape, customShape, border, cellStyle, web, cornerRadius, minHole, showDelaunay } = s
+  const patternSettings = useMemo(() => ({ width, height, shape, customShape, border, cellStyle, web, cornerRadius, minHole, showDelaunay }),
+    [width, height, shape, customShape, border, cellStyle, web, cornerRadius, minHole, showDelaunay])
   const geometry = useMemo(() => buildGeometry(doc.points, patternSettings), [doc.points, patternSettings])
   const exactSpacing = useCallback(() => spacingOf(s), [s])
   const count = doc.points.length / 2
@@ -139,6 +142,50 @@ export function App() {
       setTab('file')
     }
   }
+
+  // An SVG outline becomes the sheet. A new shape means a new pattern, so hand edits are confirmed first.
+  const replaceEdits = (run: () => void) => guard(doc.handEdited, {
+    title: 'Replace your edited points?', confirm: 'Use the new shape',
+    body: 'A new sheet shape gets a new pattern, which replaces the points you moved, added or erased. Undo brings them back.',
+    run,
+  })
+  const importShape = () => replaceEdits(() => shapeInput.current?.click())
+
+  const readShape = async (file: File) => {
+    try {
+      const outlines = readSvgOutlines(await file.text())
+      const shape = shapeFromOutlines(outlines.rings, file.name, outlines.units)
+      const edited = design.doc.handEdited
+      design.change({ shape: 'custom', customShape: shape, width: shape.width, height: shape.height }, 'customShape')
+      if (edited) design.generate() // already confirmed: start fresh in the new shape
+      setTab('sheet')
+      const skipped = outlines.open ? ` ${outlines.open} open ${outlines.open === 1 ? 'line was' : 'lines were'} left out.` : ''
+      setStatus({ text: `Using ${file.name} as the sheet.${skipped}`, warning: Boolean(outlines.open) })
+    } catch (error) {
+      const known = error instanceof SvgShapeError || error instanceof ShapeError
+      setStatus({ text: known ? error.message : `${file.name} could not be read as a shape.`, warning: true })
+    }
+  }
+
+  // Files dropped on the window: SVGs become the sheet shape, project files open.
+  useEffect(() => {
+    const over = (event: DragEvent) => { if (event.dataTransfer?.types.includes('Files')) event.preventDefault() }
+    const drop = (event: DragEvent) => {
+      const file = event.dataTransfer?.files[0]
+      if (!file) return
+      event.preventDefault()
+      if (/\.svg$/i.test(file.name) || file.type === 'image/svg+xml') replaceEdits(() => void readShape(file))
+      else if (/\.json$/i.test(file.name)) guard(design.unsaved, {
+        title: 'Open another project?', confirm: 'Discard and open',
+        body: 'Unsaved changes in the current design will be lost. Undo can still bring it back during this session.',
+        run: () => void readProject(file),
+      })
+      else setStatus({ text: `${file.name} isn’t an SVG shape or a Voronoi Studio project.`, warning: true })
+    }
+    window.addEventListener('dragover', over)
+    window.addEventListener('drop', drop)
+    return () => { window.removeEventListener('dragover', over); window.removeEventListener('drop', drop) }
+  })
 
   const report = (name: string, result: Awaited<ReturnType<typeof saveFile>>) => {
     if (result === 'saved' || result === 'downloaded') setStatus({ text: `${result === 'saved' ? 'Saved' : 'Downloaded'} ${name}.` })
@@ -233,7 +280,7 @@ export function App() {
         <PatternPanel s={s} change={design.change} stale={doc.stale} onApply={applySettings} actualCount={count}
           autoSpacingValue={design.spacing || autoSpacingFor(s)} exactSpacing={exactSpacing} capped={design.capped} onShuffle={generateNew} />
       </TabPanel>
-      <TabPanel idBase="design" id="sheet" value={tab}><SheetPanel s={s} change={design.change} /></TabPanel>
+      <TabPanel idBase="design" id="sheet" value={tab}><SheetPanel s={s} change={design.change} onImportShape={importShape} /></TabPanel>
       <TabPanel idBase="design" id="style" value={tab}><StylePanel s={s} change={design.change} holes={geometry.metrics.holes} dropped={geometry.metrics.dropped} /></TabPanel>
       <TabPanel idBase="design" id="file" value={tab}>
         <FilePanel s={s} change={design.change} unsaved={design.unsaved} busy={design.busy} openError={openError}
@@ -243,6 +290,11 @@ export function App() {
         const file = event.currentTarget.files?.[0]
         event.currentTarget.value = ''
         if (file) void readProject(file)
+      }} />
+      <input ref={shapeInput} type="file" accept=".svg,image/svg+xml" hidden aria-label="Choose an SVG shape" onChange={event => {
+        const file = event.currentTarget.files?.[0]
+        event.currentTarget.value = ''
+        if (file) void readShape(file)
       }} />
     </aside>
 

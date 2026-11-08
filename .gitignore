@@ -14,6 +14,7 @@ coverage/
 *.png
 *.svg
 !public/*.svg
+!test-fixtures/*.svg
 
 # Local test files and QA scripts
 local/

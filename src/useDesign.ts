@@ -42,6 +42,8 @@ export function useDesign(initial: () => { doc: Doc; saved: boolean }, onStatus:
   const autoOn = useRef(false)
   const status = useRef(onStatus)
   useEffect(() => { status.current = onStatus }, [onStatus])
+  // Whether the "stopped at 20,000 points" warning is showing, so a later pattern clears only that message.
+  const cappedShown = useRef(false)
 
   useEffect(() => {
     const c = new PatternClient()
@@ -78,7 +80,8 @@ export function useDesign(initial: () => { doc: Doc; saved: boolean }, onStatus:
         apply({ ...docRef.current, points: result.points, handEdited: false, stale: false }, false)
         setCapped(result.capped)
         setSpacing(result.spacing)
-        status.current(result.capped ? { text: 'Stopped at 20,000 points. Increase the spacing.', warning: true } : null)
+        if (result.capped) { status.current({ text: 'Stopped at 20,000 points. Increase the spacing.', warning: true }); cappedShown.current = true }
+        else if (cappedShown.current) { status.current(null); cappedShown.current = false }
       }).catch((error: Error) => status.current({ text: `The pattern could not be made: ${error.message}`, warning: true }))
         .finally(() => {
           inFlight.current = false

@@ -4,7 +4,7 @@
 import type { Segment } from '../voronoi/geometry'
 import type { Outline } from '../voronoi/holes'
 import type { Geometry } from '../voronoi/pattern'
-import { regionCenter, regionHeight, regionPolygon, regionWidth, type Region } from '../voronoi/region'
+import { regionCenter, regionHeight, regionRings, regionWidth, type Region } from '../voronoi/region'
 import { cutPaths, num } from './cutPaths'
 import type { Settings } from './settings'
 
@@ -52,8 +52,7 @@ export function cutDxf(g: Geometry, s: Settings): string {
       pair(0, 'CIRCLE'); pair(8, layer); pair(10, X(cx)); pair(20, Y(cy)); pair(30, 0); pair(40, num((regionWidth(r) / 2) * k, 4))
       return
     }
-    const poly = regionPolygon(r)
-    polyline({ points: poly, bulges: poly.map(() => 0) }, layer)
+    for (const ring of regionRings(r)) polyline({ points: ring, bulges: ring.map(() => 0) }, layer)
   }
 
   const cut = cutPaths(g, s)

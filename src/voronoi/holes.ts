@@ -1,8 +1,12 @@
-// Cut-out holes: each cell shrunk by half the web width, with its corners rounded. Cells are convex, so
-// shrinking by (half web + radius) and then growing back by the radius with arcs gives exact round corners.
-// Outlines are stored like a DXF polyline: points plus a "bulge" per segment (0 = straight,
-// tan(angle/4) = arc), so SVG, canvas and DXF all draw the same true arcs.
-import { area, insetConvex, minWidth, normalize, perimeter, type Polygon, type Vec } from './geometry'
+// Cut-out holes: each cell shrunk by half the web width, with its corners rounded. Convex cells are shrunk by
+// (half web + radius) and grown back by the radius with arcs, which gives exact round corners. Outlines are
+// stored like a DXF polyline: points plus a "bulge" per segment (0 = straight, tan(angle/4) = arc), so SVG,
+// canvas and DXF all draw the same true arcs.
+// Cells clipped by a custom shape can be concave or in pieces. Those go through Clipper2's offsets instead,
+// with corners rounded to within 5 µm by short straight segments.
+import type { Cell } from './diagram'
+import { area, convexHull, insetConvex, isConvex, minWidth, normalize, perimeter, signedArea, type Polygon, type Vec } from './geometry'
+import { boxOf, difference, groupRings, offset } from './shape'
 
 export type Outline = { points: Vec[]; bulges: number[] }
 export type Hole = { cell: number; outline: Outline; width: number; area: number; length: number }
@@ -97,4 +101,61 @@ export function outlineLength(outline: Outline): number {
     sum += theta > 1e-12 ? (chord / (2 * Math.sin(theta / 2))) * theta : chord
   }
   return sum
+}
+
+// All holes for one cell: one for a convex cell, possibly several for a cell a custom shape cut into pieces.
+export function makeHoles(cell: Cell, index: number, settings: HoleSettings): Hole[] {
+  if (cell.length === 1 && isConvex(cell[0])) {
+    const hole = makeHole(cell[0], index, settings)
+    return hole ? [hole] : []
+  }
+  return solidPieces(cell).flatMap(piece => roundHoles(piece, index, settings))
+}
+
+// The cell's pieces with no holes in them. Where a cell wraps right round a hole in the shape, a hairline slot
+// cuts through to that hole; once the web is taken off both sides, the slot becomes a bridge of web, so the
+// frame around the hole stays joined to the sheet instead of falling out with the cut.
+function solidPieces(cell: Cell): Polygon[] {
+  if (cell.every(ring => signedArea(ring) > 0)) return cell
+  const pieces: Polygon[] = []
+  for (const { outer, holes } of groupRings(cell)) {
+    if (!holes.length) { pieces.push(outer); continue }
+    const top = boxOf([outer])[1] - 1
+    const slots = holes.map((hole): Polygon => {
+      const [x0, y0, x1, y1] = boxOf([hole])
+      const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, w = 1e-3
+      return [[cx - w, top], [cx + w, top], [cx + w, cy], [cx - w, cy]]
+    })
+    pieces.push(...difference([outer, ...holes], slots).filter(ring => signedArea(ring) > 0))
+  }
+  return pieces
+}
+
+function roundHoles(piece: Polygon, index: number, { web, radius, minHole }: HoleSettings): Hole[] {
+  const half = Math.max(0, web / 2)
+  let r = Math.max(0, radius)
+  let core = offset([piece], -(half + r), 'miter')
+  if (!core.length) {
+    // The corners are rounder than the piece is wide: use the largest radius that fits.
+    if (!offset([piece], -half, 'miter').length) return []
+    let lo = 0, hi = r
+    for (let i = 0; i < 10; i++) { const mid = (lo + hi) / 2; if (offset([piece], -(half + mid), 'miter').length) lo = mid; else hi = mid }
+    r = lo * 0.98
+    core = offset([piece], -(half + r), 'miter')
+    if (!core.length) return []
+  }
+  const grown = r > 1e-9 ? offset(core, r, 'round') : core
+  const out: Hole[] = []
+  for (const ring of grown) {
+    if (signedArea(ring) <= 0) continue
+    if (minHole > 0 && !offset([ring], -minHole / 2 + 1e-6, 'miter').length) continue
+    out.push({
+      cell: index,
+      outline: { points: ring, bulges: ring.map(() => 0) },
+      width: minWidth(convexHull(ring)), // across its convex outline: a slight overestimate for concave holes
+      area: signedArea(ring),
+      length: perimeter(ring),
+    })
+  }
+  return out
 }

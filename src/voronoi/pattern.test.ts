@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { DensitySettings } from './density'
-import { buildCells, buildDiagram, delaunayEdges, nearestPoint, uniqueEdges } from './diagram'
-import { area } from './geometry'
+import { buildCells, buildDiagram, cellArea, delaunayEdges, nearestPoint, uniqueEdges } from './diagram'
 import { arcFromBulge, makeHole, outlineLength } from './holes'
 import { buildGeometry, patternRegion, type PatternSettings } from './pattern'
 import { createRng } from './random'
@@ -17,7 +16,7 @@ const sheet = sheetRegion(200, 200, 'rect')
 const oval = sheetRegion(200, 120, 'ellipse')
 
 function evenness(points: Float64Array, region = sheet) {
-  const areas = buildCells(points, region).flatMap(c => (c ? [area(c)] : []))
+  const areas = buildCells(points, region).flatMap(c => (c ? [cellArea(c)] : []))
   const mean = areas.reduce((a, b) => a + b, 0) / areas.length
   return Math.sqrt(areas.reduce((a, b) => a + (b - mean) ** 2, 0) / areas.length) / mean
 }
@@ -93,14 +92,14 @@ describe('diagram', () => {
   it('tiles the region with one cell per point', () => {
     const cells = buildCells(points, sheet)
     expect(cells.filter(Boolean)).toHaveLength(300)
-    expect(cells.reduce((a, c) => a + (c ? area(c) : 0), 0)).toBeCloseTo(40_000, 3)
+    expect(cells.reduce((a, c) => a + (c ? cellArea(c) : 0), 0)).toBeCloseTo(40_000, 3)
     const ovalPoints = seedPoints(seed(), oval).points
-    expect(buildCells(ovalPoints, oval).reduce((a, c) => a + (c ? area(c) : 0), 0)).toBeCloseTo(regionArea(oval), -2)
+    expect(buildCells(ovalPoints, oval).reduce((a, c) => a + (c ? cellArea(c) : 0), 0)).toBeCloseTo(regionArea(oval), -2)
   })
 
   it('lists every edge once', () => {
     const cells = buildCells(points, sheet)
-    const sides = cells.reduce((a, c) => a + (c ? c.length : 0), 0)
+    const sides = cells.reduce((a, c) => a + (c ? c.reduce((n, ring) => n + ring.length, 0) : 0), 0)
     const { internal, boundary } = uniqueEdges(cells)
     expect(internal.length * 2 + boundary.length).toBe(sides)
     expect(boundary.reduce((a, s) => a + Math.hypot(s[2] - s[0], s[3] - s[1]), 0)).toBeCloseTo(800, 6)
@@ -187,7 +186,7 @@ describe('holes', () => {
 })
 
 describe('pattern geometry', () => {
-  const base: PatternSettings = { width: 200, height: 150, shape: 'rect', border: 6, cellStyle: 'holes', web: 3, cornerRadius: 1.5, minHole: 0.5, showDelaunay: false }
+  const base: PatternSettings = { width: 200, height: 150, shape: 'rect', customShape: null, border: 6, cellStyle: 'holes', web: 3, cornerRadius: 1.5, minHole: 0.5, showDelaunay: false }
 
   it('leaves a solid frame exactly the border wide in Holes style', () => {
     const points = seedPoints(seed(), patternRegion(base)).points

@@ -1,5 +1,15 @@
 # Voronoi Studio Changelog
 
+## 1.1.0 2026-11-07
+
+- **Your own sheet shape.** Press **Import SVG shape…** on the Sheet tab, or drop an SVG on the window, and the pattern fills that outline. Outlines inside it become holes, with the border kept round them too. It works with Lines and Holes, gradients, relaxation, hand edits and every export.
+- Sizes come from the file. When a file doesn't say how big it is, it's read at 96 units per inch, or 72 for Illustrator files, and the Sheet tab says so. Width and height keep the shape's proportions.
+- Cut files put an imported shape's own holes with the inner cuts, ahead of its outside edge.
+- Where a cell wraps right round a hole in the shape, a bridge of web keeps the frame round that hole attached.
+- Project files are now version 2, to hold the shape. Version 1 files still open; Voronoi Studio 1.0 can't open version 2 files.
+- Fixed: a number field could keep showing what you'd typed after the value changed some other way, such as Undo or the linked height, and write it back when you left the field. Tabbing through a field no longer rounds its value.
+- Fixed: a message could vanish the moment a new pattern finished.
+
 ## 1.0.0 2026-11-07
 
 First release of Voronoi Studio, rebuilt from Gil's Voronoi Lab. Everything the old app did is still here, and:

@@ -19,9 +19,15 @@ export function densityField(settings: DensitySettings, region: Region): Density
     const lo = Math.min(...ts), span = Math.max(1e-9, Math.max(...ts) - lo)
     return (x, y) => s ** Math.min(1, Math.max(0, (x * ux + y * uy - lo) / span))
   }
-  const rx = regionWidth(region) / 2, ry = regionHeight(region) / 2
-  // A rectangle's corners are at distance 1; an ellipse's rim is at 1.
-  const norm = region.shape === 'rect' ? Math.SQRT2 : 1
+  const rx = Math.max(1e-9, regionWidth(region) / 2), ry = Math.max(1e-9, regionHeight(region) / 2)
+  // Scaled so the farthest point of the sheet is at 1: a rectangle's corners, an ellipse's rim, or a custom
+  // shape's farthest outline point.
+  let norm = 1
+  if (region.shape === 'rect') norm = Math.SQRT2
+  else if (region.shape === 'custom') {
+    norm = 1e-9
+    for (const ring of region.rings ?? []) for (const [x, y] of ring) norm = Math.max(norm, Math.hypot((x - cx) / rx, (y - cy) / ry))
+  }
   return (x, y) => {
     const t = Math.min(1, Math.hypot((x - cx) / rx, (y - cy) / ry) / norm)
     return s ** (settings.invert ? t : 1 - t)

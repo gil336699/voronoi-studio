@@ -3,12 +3,14 @@
 import type { DensityMode } from '../voronoi/density'
 import type { CellStyle } from '../voronoi/pattern'
 import type { Shape } from '../voronoi/region'
+import { sanitizeShape, type CustomShape } from '../voronoi/shape'
 import { MAX_POINTS, type Placement, type SeedSettings } from '../voronoi/seeding'
 import type { Units } from './units'
 
 export type Settings = {
   // Sheet
   width: number; height: number; units: Units; dpi: number; shape: Shape; border: number; keepPoints: boolean
+  customShape: CustomShape | null // the imported outline, kept when switching to another shape and back
   // Points
   count: number; placement: Placement; autoSpacing: boolean; spacing: number; tries: number; jitter: number; seed: number
   density: DensityMode; densityStrength: number; densityAngle: number; densityInvert: boolean
@@ -22,7 +24,7 @@ export type Settings = {
 }
 
 export const DEFAULTS: Settings = {
-  width: 200, height: 200, units: 'mm', dpi: 300, shape: 'rect', border: 5, keepPoints: true,
+  width: 200, height: 200, units: 'mm', dpi: 300, shape: 'rect', border: 5, keepPoints: true, customShape: null,
   count: 300, placement: 'even', autoSpacing: true, spacing: 10, tries: 30, jitter: 0.3, seed: 1,
   density: 'none', densityStrength: 4, densityAngle: 0, densityInvert: false,
   relaxSteps: 3,
@@ -42,7 +44,7 @@ export const RANGES: Record<NumericKey, [number, number]> = {
 }
 
 const CHOICES = {
-  units: ['mm', 'in', 'px', 'pc'], shape: ['rect', 'ellipse'], placement: ['random', 'even', 'hex', 'square'],
+  units: ['mm', 'in', 'px', 'pc'], shape: ['rect', 'ellipse', 'custom'], placement: ['random', 'even', 'hex', 'square'],
   density: ['none', 'linear', 'radial'], cellStyle: ['lines', 'holes'],
 } as const
 
@@ -50,7 +52,7 @@ const CHOICES = {
 export const SEED_KEYS: (keyof Settings)[] = ['count', 'placement', 'autoSpacing', 'spacing', 'tries', 'jitter', 'seed',
   'density', 'densityStrength', 'densityAngle', 'densityInvert', 'relaxSteps']
 // Settings that move the region points live in. With "Keep points" on, points follow the sheet instead.
-export const SHEET_KEYS: (keyof Settings)[] = ['width', 'height', 'shape', 'border']
+export const SHEET_KEYS: (keyof Settings)[] = ['width', 'height', 'shape', 'border', 'customShape']
 
 export function clampSetting<K extends NumericKey>(key: K, value: number): number {
   const [lo, hi] = RANGES[key]
@@ -63,7 +65,8 @@ export function sanitizeSettings(raw: unknown): Settings {
   const out: Record<string, unknown> = { ...DEFAULTS }
   for (const key of Object.keys(DEFAULTS) as (keyof Settings)[]) {
     const value = source[key], fallback = DEFAULTS[key]
-    if (typeof fallback === 'number') {
+    if (key === 'customShape') out[key] = sanitizeShape(value)
+    else if (typeof fallback === 'number') {
       if (typeof value === 'number' && Number.isFinite(value)) out[key] = clampSetting(key as NumericKey, value)
     } else if (typeof fallback === 'boolean') {
       if (typeof value === 'boolean') out[key] = value
@@ -71,6 +74,8 @@ export function sanitizeSettings(raw: unknown): Settings {
       if ((CHOICES[key as keyof typeof CHOICES] as readonly string[]).includes(value as string)) out[key] = value
     } else if (typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value)) out[key] = value.toLowerCase()
   }
+  // A custom sheet without its outline can't be drawn, so it becomes a rectangle.
+  if (out.shape === 'custom' && !out.customShape) out.shape = 'rect'
   return out as Settings
 }
 

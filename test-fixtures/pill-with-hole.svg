@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="160mm" height="80mm" viewBox="0 0 160 80">
+  <!-- A pill with a round hole, written the compact way drawing apps do. -->
+  <path fill="none" stroke="red" d="M40 0H120A40 40 0 0 1 120 80H40A40 40 0 0 1 40 0ZM65 40a15 15 0 1 0 30 0a15 15 0 1 0-30 0Z"/>
+  <path d="M0 0L10 10" stroke="red"/>
+</svg>

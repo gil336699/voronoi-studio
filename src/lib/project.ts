@@ -4,7 +4,8 @@ import { MAX_POINTS } from '../voronoi/seeding'
 import { sanitizeSettings, type Settings } from './settings'
 
 export const SCHEMA = 'voronoi-studio/project'
-export const VERSION = 1
+// Version 2 added imported sheet shapes (settings.customShape). Version 1 files open unchanged.
+export const VERSION = 2
 export const EXTENSION = '.voronoi.json'
 
 export type Design = { settings: Settings; points: Float64Array; handEdited: boolean }

@@ -1,18 +1,32 @@
-// The area a pattern fills: a rectangle, or the ellipse that fits inside it. Everything is in millimetres
-// with the sheet's top-left corner at 0, 0.
+// The area a pattern fills: a rectangle, the ellipse that fits inside it, or a custom shape such as an
+// outline imported from an SVG (with holes). Everything is in millimetres with the sheet's top-left corner at
+// 0, 0. x0…y1 is always the bounding box; custom regions also carry their outlines as rings.
 import { ellipsePolygon, type Polygon, type Vec } from './geometry'
+import { boxOf, cachedOffset, ringsArea, ringsPerimeter, shapeIndex, shapeRings, type CustomShape } from './shape'
 
-export type Shape = 'rect' | 'ellipse'
-export type Region = { shape: Shape; x0: number; y0: number; x1: number; y1: number }
+export type Shape = 'rect' | 'ellipse' | 'custom'
+export type Region = { shape: Shape; x0: number; y0: number; x1: number; y1: number; rings?: Polygon[] }
 
 const ELLIPSE_SEGMENTS = 256
 
-export function sheetRegion(width: number, height: number, shape: Shape): Region {
+// A custom sheet needs its shape; without one it falls back to a rectangle.
+export function sheetRegion(width: number, height: number, shape: Shape, custom?: CustomShape | null): Region {
+  if (shape === 'custom') {
+    if (custom) return { shape, x0: 0, y0: 0, x1: width, y1: height, rings: shapeRings(custom, width, height) }
+    shape = 'rect'
+  }
   return { shape, x0: 0, y0: 0, x1: width, y1: height }
 }
 
-// Shrink a region evenly on all sides. It never shrinks below a sliver at its centre.
+// Shrink a region evenly on all sides. Rectangles and ellipses never shrink below a sliver at their centre;
+// a custom shape's holes grow by the same amount, and thin parts can vanish.
 export function insetRegion(region: Region, d: number): Region {
+  if (region.shape === 'custom') {
+    const rings = cachedOffset(region.rings ?? [], -Math.max(0, d))
+    if (!rings.length) { const [cx, cy] = regionCenter(region); return { shape: 'custom', x0: cx, y0: cy, x1: cx, y1: cy, rings } }
+    const [x0, y0, x1, y1] = boxOf(rings)
+    return { shape: 'custom', x0, y0, x1, y1, rings }
+  }
   const half = Math.min(region.x1 - region.x0, region.y1 - region.y0) / 2
   const k = Math.min(Math.max(0, d), half * 0.98)
   return { ...region, x0: region.x0 + k, y0: region.y0 + k, x1: region.x1 - k, y1: region.y1 - k }
@@ -24,12 +38,14 @@ export const regionCenter = (r: Region): Vec => [(r.x0 + r.x1) / 2, (r.y0 + r.y1
 
 export function regionArea(r: Region): number {
   const w = regionWidth(r), h = regionHeight(r)
+  if (r.shape === 'custom') return Math.max(0, ringsArea(r.rings ?? []))
   return r.shape === 'rect' ? w * h : Math.PI * (w / 2) * (h / 2)
 }
 
 // Ramanujan's approximation for the ellipse, which is within 0.01 % for any sheet shape here.
 export function regionPerimeter(r: Region): number {
   const w = regionWidth(r), h = regionHeight(r)
+  if (r.shape === 'custom') return ringsPerimeter(r.rings ?? [])
   if (r.shape === 'rect') return 2 * (w + h)
   const a = w / 2, b = h / 2
   return Math.PI * (3 * (a + b) - Math.sqrt((3 * a + b) * (a + 3 * b)))
@@ -38,6 +54,7 @@ export function regionPerimeter(r: Region): number {
 export function contains(r: Region, x: number, y: number): boolean {
   if (x < r.x0 || x > r.x1 || y < r.y0 || y > r.y1) return false
   if (r.shape === 'rect') return true
+  if (r.shape === 'custom') return shapeIndex(r.rings ?? []).contains(x, y)
   const [cx, cy] = regionCenter(r)
   const dx = (x - cx) / (regionWidth(r) / 2), dy = (y - cy) / (regionHeight(r) / 2)
   return dx * dx + dy * dy <= 1
@@ -47,6 +64,7 @@ export function contains(r: Region, x: number, y: number): boolean {
 export function clampToRegion(r: Region, x: number, y: number): Vec {
   const inset = 1e-6 * Math.max(regionWidth(r), regionHeight(r))
   if (r.shape === 'rect') return [Math.min(r.x1 - inset, Math.max(r.x0 + inset, x)), Math.min(r.y1 - inset, Math.max(r.y0 + inset, y))]
+  if (r.shape === 'custom') return r.rings?.length ? shapeIndex(r.rings).nearestInside(x, y) : [x, y]
   if (contains(r, x, y)) return [x, y]
   const [cx, cy] = regionCenter(r)
   const rx = regionWidth(r) / 2, ry = regionHeight(r) / 2
@@ -55,11 +73,23 @@ export function clampToRegion(r: Region, x: number, y: number): Vec {
   return [cx + dx * k * rx, cy + dy * k * ry]
 }
 
-// The region as a convex polygon, for clipping cells.
+// The region as a convex polygon, for clipping cells (rectangles and ellipses).
 export function regionPolygon(r: Region): Polygon {
   if (r.shape === 'rect') return [[r.x0, r.y0], [r.x1, r.y0], [r.x1, r.y1], [r.x0, r.y1]]
   const [cx, cy] = regionCenter(r)
   return ellipsePolygon(cx, cy, regionWidth(r) / 2, regionHeight(r) / 2, ELLIPSE_SEGMENTS)
+}
+
+// Every outline of the region: one for rectangles and ellipses, all outlines and holes for custom shapes.
+export function regionRings(r: Region): Polygon[] {
+  return r.shape === 'custom' ? r.rings ?? [] : [regionPolygon(r)]
+}
+
+// A custom region split into its outer outlines and its holes, so holes can be cut first.
+export function splitHoles(r: Region): { outer: Region; holes: Region | null } {
+  if (r.shape !== 'custom' || !r.rings) return { outer: r, holes: null }
+  const outer = r.rings.filter(ring => ringsArea([ring]) > 0), holes = r.rings.filter(ring => ringsArea([ring]) < 0)
+  return { outer: { ...r, rings: outer }, holes: holes.length ? { ...r, rings: holes } : null }
 }
 
 // Map a point from one region to another, for keeping points when the sheet changes. Boxes scale

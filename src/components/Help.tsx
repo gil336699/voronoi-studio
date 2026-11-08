@@ -6,7 +6,7 @@ export function QuickStart({ onClose }: { onClose: () => void }) {
   return <section className="quick-start glass" aria-labelledby="quick-start-title">
     <h2 id="quick-start-title">Quick start</h2>
     <ol>
-      <li><b>Sheet:</b> pick a size and shape, such as a 200 mm tile or a coaster.</li>
+      <li><b>Sheet:</b> pick a size and shape, such as a 200 mm tile or a coaster, or import your own outline from an SVG.</li>
       <li><b>Pattern:</b> set the cell count and placement, then drag, add or erase cells on the sheet.</li>
       <li><b>Style</b> and <b>File:</b> choose Lines or Holes, then export a laser SVG or DXF at real size.</li>
     </ol>

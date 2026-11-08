@@ -78,7 +78,8 @@ export function Inspector({ m, s, count }: { m: Metrics; s: Settings; count: num
   const L = (mm: number) => formatSmall(mm, s.units, s.dpi)
   const holes = s.cellStyle === 'holes'
   const rows: [string, string, string][] = [
-    ['Sheet', `${formatLength(s.width, s.units, s.dpi)} × ${formatLength(s.height, s.units, s.dpi)}`, s.shape === 'ellipse' ? 'An ellipse that fits this width and height.' : 'Width × height of the sheet.'],
+    ['Sheet', `${formatLength(s.width, s.units, s.dpi)} × ${formatLength(s.height, s.units, s.dpi)}`, s.shape === 'ellipse' ? 'An ellipse that fits this width and height.'
+      : s.shape === 'custom' ? `The imported shape${s.customShape ? `, ${s.customShape.name},` : ''} at this width and height.` : 'Width × height of the sheet.'],
     ['Cells', count.toLocaleString(), 'Number of points, one per cell.'],
     ...(holes ? [['Holes', `${m.holes.toLocaleString()}${m.dropped ? ` · ${m.dropped.toLocaleString()} left solid` : ''}`,
       'Holes cut out. Cells smaller than the smallest hole, or closed by the web, are left solid.'] as [string, string, string]] : []),

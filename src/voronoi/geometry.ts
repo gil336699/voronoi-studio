@@ -120,3 +120,27 @@ export function ellipsePolygon(cx: number, cy: number, rx: number, ry: number, s
 }
 
 export function segmentLength(s: Segment): number { return Math.hypot(s[2] - s[0], s[3] - s[1]) }
+
+// Whether a ring turns the same way at every corner (straight runs allowed).
+export function isConvex(poly: Polygon): boolean {
+  let sign = 0
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i], b = poly[(i + 1) % poly.length], c = poly[(i + 2) % poly.length]
+    const cross = (b[0] - a[0]) * (c[1] - b[1]) - (b[1] - a[1]) * (c[0] - b[0])
+    if (Math.abs(cross) < 1e-12) continue
+    if (sign === 0) sign = Math.sign(cross)
+    else if (Math.sign(cross) !== sign) return false
+  }
+  return true
+}
+
+// The convex hull (Andrew's monotone chain), with positive area.
+export function convexHull(points: Vec[]): Polygon {
+  const p = [...points].sort((a, b) => a[0] - b[0] || a[1] - b[1])
+  if (p.length < 3) return p
+  const cross = (o: Vec, a: Vec, b: Vec) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+  const lower: Vec[] = [], upper: Vec[] = []
+  for (const q of p) { while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], q) <= 0) lower.pop(); lower.push(q) }
+  for (let i = p.length - 1; i >= 0; i--) { const q = p[i]; while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], q) <= 0) upper.pop(); upper.push(q) }
+  return normalize(lower.slice(0, -1).concat(upper.slice(0, -1)))
+}

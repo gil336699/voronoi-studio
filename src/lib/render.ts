@@ -19,8 +19,16 @@ const PREVIEW_MIN_LINE = 0.75 // css px
 const HOVER = '#0a84ff'
 const ERASE = '#ff3b30'
 
+// Adds the region's outline to the current path. Fill and clip it with 'evenodd', so a custom shape's holes stay open.
 export function regionPath(ctx: CanvasRenderingContext2D, r: Region) {
   if (r.shape === 'rect') { ctx.rect(r.x0, r.y0, regionWidth(r), regionHeight(r)); return }
+  if (r.shape === 'custom') {
+    for (const ring of r.rings ?? []) {
+      ring.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)))
+      ctx.closePath()
+    }
+    return
+  }
   const [cx, cy] = regionCenter(r)
   ctx.ellipse(cx, cy, regionWidth(r) / 2, regionHeight(r) / 2, 0, 0, Math.PI * 2)
 }
@@ -50,12 +58,12 @@ export function drawDesign(ctx: CanvasRenderingContext2D, g: Geometry, points: F
     ctx.save()
     if (o.preview) { ctx.shadowColor = 'rgba(15, 23, 42, .28)'; ctx.shadowBlur = 28 * o.dpr; ctx.shadowOffsetY = 8 * o.dpr }
     ctx.beginPath(); regionPath(ctx, g.sheet)
-    ctx.fillStyle = s.background; ctx.fill()
+    ctx.fillStyle = s.background; ctx.fill('evenodd')
     ctx.restore()
   }
 
   ctx.save()
-  ctx.beginPath(); regionPath(ctx, g.sheet); ctx.clip()
+  ctx.beginPath(); regionPath(ctx, g.sheet); ctx.clip('evenodd')
   // Round caps cost about 40 % more to draw; on big previews they're invisible at screen size.
   const many = o.preview && g.edges.internal.length > 4000
   ctx.lineCap = many ? 'butt' : 'round'; ctx.lineJoin = 'round'
@@ -72,7 +80,7 @@ export function drawDesign(ctx: CanvasRenderingContext2D, g: Geometry, points: F
       }
     } else {
       ctx.beginPath(); regionPath(ctx, g.region)
-      if (s.fill) ctx.fill()
+      if (s.fill) ctx.fill('evenodd')
       segmentsPath(ctx, g.edges.internal)
       ctx.stroke()
     }
@@ -111,9 +119,11 @@ function drawHover(ctx: CanvasRenderingContext2D, g: Geometry, points: Float64Ar
   const cell = g.cells[hover.index]
   if (!cell) return
   ctx.beginPath()
-  cell.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)))
-  ctx.closePath()
-  ctx.fillStyle = 'rgba(255, 59, 48, .16)'; ctx.fill()
+  for (const ring of cell) {
+    ring.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)))
+    ctx.closePath()
+  }
+  ctx.fillStyle = 'rgba(255, 59, 48, .16)'; ctx.fill('evenodd')
   ctx.lineWidth = 2 * px; ctx.strokeStyle = ERASE; ctx.stroke()
 }
 

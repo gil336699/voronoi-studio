@@ -22,7 +22,7 @@ export function SwitchField({ label, checked, onChange, tip, unavailable }: Tip 
   </label>
 }
 
-export type Option<T extends string> = { value: T; label: string; tip: string }
+export type Option<T extends string> = { value: T; label: string; tip: string; unavailable?: string | false }
 
 export function Segmented<T extends string>({ label, options, value, onChange, unavailable, hideLabel }: {
   label: string; options: Option<T>[]; value: T; onChange: (value: T) => void; unavailable?: string | false; hideLabel?: boolean
@@ -32,9 +32,12 @@ export function Segmented<T extends string>({ label, options, value, onChange, u
     {!hideLabel && <span className="field-label" id={id}>{label}</span>}
     <div className="button-row segmented" role="group" aria-labelledby={hideLabel ? undefined : id} aria-label={hideLabel ? label : undefined}
       style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}>
-      {options.map(option => <button key={option.value} type="button" aria-pressed={option.value === value}
-        aria-disabled={unavailable ? true : undefined} data-tip={unavailable || option.tip}
-        onClick={() => { if (!unavailable) onChange(option.value) }}>{option.label}</button>)}
+      {options.map(option => {
+        const off = unavailable || option.unavailable
+        return <button key={option.value} type="button" aria-pressed={option.value === value}
+          aria-disabled={off ? true : undefined} data-tip={off || option.tip}
+          onClick={() => { if (!off) onChange(option.value) }}>{option.label}</button>
+      })}
     </div>
   </div>
 }
@@ -60,23 +63,31 @@ export function DraftNumber({ value, min, max, step = 1, digits = 0, onChange, d
   value: number; min: number; max: number; step?: number; digits?: number; onChange: (value: number) => void
   disabled?: boolean; className?: string; labelledBy?: string; label?: string
 }) {
-  const [draft, setDraft] = useState<string | null>(null)
-  const shown = draft ?? trimZeros(value.toFixed(digits))
-  const commit = (text: string) => {
-    const v = Number(text)
-    if (text.trim() !== '' && Number.isFinite(v)) onChange(Math.min(max, Math.max(min, v)))
+  // What was typed, and the value it was typed against. It shows only while that is still the value, so a
+  // change from elsewhere (an import, a linked field, Undo) replaces it instead of being overwritten on blur.
+  const [draft, setDraft] = useState<{ text: string; at: number } | null>(null)
+  const same = (a: number, b: number) => Math.abs(a - b) <= 1e-9 * Math.max(1, Math.abs(b))
+  const typing = draft !== null && same(draft.at, value)
+  const shown = typing ? draft.text : trimZeros(value.toFixed(digits))
+  const commit = () => {
+    // Only text that was actually typed is applied, so tabbing through a field never rounds its value.
+    if (typing) {
+      const v = Number(draft.text)
+      if (draft.text.trim() !== '' && Number.isFinite(v)) onChange(Math.min(max, Math.max(min, v)))
+    }
     setDraft(null)
   }
   return <input className={className} type="number" inputMode="decimal" min={min} max={max} step={step} value={shown} disabled={disabled}
     aria-labelledby={labelledBy} aria-label={label}
     onChange={event => {
       const text = event.currentTarget.value
-      setDraft(text)
       const v = Number(text)
-      if (text.trim() !== '' && Number.isFinite(v) && v >= min && v <= max) onChange(v)
+      const valid = text.trim() !== '' && Number.isFinite(v) && v >= min && v <= max
+      setDraft({ text, at: valid ? v : value })
+      if (valid) onChange(v)
     }}
-    onBlur={event => commit(event.currentTarget.value)}
-    onKeyDown={event => { if (event.key === 'Enter') commit(event.currentTarget.value) }} />
+    onBlur={commit}
+    onKeyDown={event => { if (event.key === 'Enter') commit() }} />
 }
 
 export function NumberField({ label, value, min, max, step = 1, digits = 0, suffix, onChange, tip, unavailable, compact }: Tip & {

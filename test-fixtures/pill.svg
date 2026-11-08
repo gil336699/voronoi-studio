@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Layer_1" data-name="Layer 1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 200">
+  <defs><style>.cut { fill: none; stroke: red; }</style></defs>
+  <rect class="cut" x="0" y="0" width="400" height="200" rx="100" ry="100"/>
+</svg>

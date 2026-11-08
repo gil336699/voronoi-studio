@@ -1,6 +1,6 @@
 // SVG files at real size. "Artwork" looks like the preview; "laser" has only cut lines, as red
 // hairlines with no fill, which laser software such as LightBurn and Glowforge reads as cuts.
-import type { Segment } from '../voronoi/geometry'
+import type { Polygon, Segment } from '../voronoi/geometry'
 import type { Outline } from '../voronoi/holes'
 import type { Geometry } from '../voronoi/pattern'
 import { regionCenter, regionHeight, regionWidth, type Region } from '../voronoi/region'
@@ -25,7 +25,13 @@ function header(s: Settings, artwork: boolean, title: string): string {
     + `<title>${title}</title>\n`
 }
 
+// Straight-sided outlines (a custom shape's rings) as one path, filled even-odd so holes stay open.
+export function ringsPath(rings: Polygon[]): string {
+  return rings.map(ring => `M${ring.map(([x, y]) => `${num(x)} ${num(y)}`).join('L')}Z`).join('')
+}
+
 export function regionElement(r: Region, attributes: string): string {
+  if (r.shape === 'custom') return `<path fill-rule="evenodd" d="${ringsPath(r.rings ?? [])}" ${attributes}/>`
   if (r.shape === 'rect') return `<rect x="${num(r.x0)}" y="${num(r.y0)}" width="${num(regionWidth(r))}" height="${num(regionHeight(r))}" ${attributes}/>`
   const [cx, cy] = regionCenter(r)
   return `<ellipse cx="${num(cx)}" cy="${num(cy)}" rx="${num(regionWidth(r) / 2)}" ry="${num(regionHeight(r) / 2)}" ${attributes}/>`

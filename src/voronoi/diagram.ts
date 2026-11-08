@@ -1,15 +1,35 @@
-// The Voronoi diagram itself: one convex cell per point, clipped to the region. d3-delaunay builds the
-// cells inside the region's box; ellipses are then clipped against a 256-sided polygon.
+// The Voronoi diagram itself: one cell per point, clipped to the region. d3-delaunay builds the cells inside
+// the region's box; ellipses are then clipped against a 256-sided polygon, and custom shapes with Clipper2.
+// A cell is a list of rings: one convex polygon for rectangles and ellipses, and for custom shapes possibly
+// several pieces, with holes (negative area) where the shape has holes.
 import { Delaunay } from 'd3-delaunay'
-import { clipConvex, normalize, type Polygon, type Segment } from './geometry'
+import { centroid, clipConvex, normalize, signedArea, type Polygon, type Segment, type Vec } from './geometry'
 import { contains, regionArea, regionCenter, regionHeight, regionPolygon, regionWidth, type Region } from './region'
+import { shapeIndex } from './shape'
 
-export type Cells = (Polygon | null)[]
+export type Cell = Polygon[]
+export type Cells = (Cell | null)[]
+
+export const cellArea = (cell: Cell) => cell.reduce((a, ring) => a + signedArea(ring), 0)
+
+// Area-weighted centre of all of a cell's rings (holes subtract).
+export function cellCentroid(cell: Cell): Vec {
+  if (cell.length === 1) return centroid(cell[0])
+  let a = 0, cx = 0, cy = 0
+  for (const ring of cell) {
+    const ra = signedArea(ring), [rx, ry] = centroid(ring)
+    a += ra; cx += rx * ra; cy += ry * ra
+  }
+  return Math.abs(a) > 1e-12 ? [cx / a, cy / a] : centroid(cell[0])
+}
+
+const empty = (region: Region) => region.shape === 'custom' && !region.rings?.length
 type Voronoi = ReturnType<Delaunay<Float64Array>['voronoi']>
 
 export function buildCells(points: Float64Array, region: Region): Cells {
   const n = points.length / 2
   if (n === 0) return []
+  if (empty(region)) return new Array(n).fill(null)
   return cellsOf(new Delaunay(points).voronoi([region.x0, region.y0, region.x1, region.y1]), n, region)
 }
 
@@ -18,14 +38,17 @@ export function buildCells(points: Float64Array, region: Region): Cells {
 export function buildDiagram(points: Float64Array, region: Region): { cells: Cells; internal: Segment[] } {
   const n = points.length / 2
   if (n === 0) return { cells: [], internal: [] }
+  if (empty(region)) return { cells: new Array(n).fill(null), internal: [] }
   const voronoi = new Delaunay(points).voronoi([region.x0, region.y0, region.x1, region.y1])
   const raw: Segment[] = []
   let x = 0, y = 0
   voronoi.render({ moveTo(px: number, py: number) { x = px; y = py }, lineTo(px: number, py: number) { raw.push([x, y, px, py]); x = px; y = py } })
   const internal: Segment[] = []
+  const shape = region.shape === 'custom' ? shapeIndex(region.rings ?? []) : null
+  const keep = (s: Segment | null) => { if (s && Math.hypot(s[2] - s[0], s[3] - s[1]) > 1e-9) internal.push(s) }
   for (const s of raw) {
-    const clipped = region.shape === 'ellipse' ? clipToEllipse(s, region) : s
-    if (clipped && Math.hypot(clipped[2] - clipped[0], clipped[3] - clipped[1]) > 1e-9) internal.push(clipped)
+    if (shape) for (const piece of shape.clipSegment(s)) keep(piece)
+    else keep(region.shape === 'ellipse' ? clipToEllipse(s, region) : s)
   }
   return { cells: cellsOf(voronoi, n, region), internal }
 }
@@ -47,13 +70,15 @@ function clipToEllipse(s: Segment, region: Region): Segment | null {
 
 function cellsOf(voronoi: Voronoi, n: number, region: Region): Cells {
   const clip = region.shape === 'ellipse' ? regionPolygon(region) : null
+  const shape = region.shape === 'custom' ? shapeIndex(region.rings ?? []) : null
   const cells: Cells = new Array(n)
   for (let i = 0; i < n; i++) {
     const ring = voronoi.cellPolygon(i)
     if (!ring) { cells[i] = null; continue }
     let poly = normalize(ring.slice(0, -1).map(([x, y]) => [x, y]))
     if (clip && poly.length >= 3) poly = normalize(clipConvex(poly, clip))
-    cells[i] = poly.length >= 3 ? poly : null
+    if (poly.length < 3) { cells[i] = null; continue }
+    cells[i] = shape ? shape.clipCell(poly) : [poly]
   }
   return cells
 }
@@ -73,10 +98,9 @@ export function nearestPoint(points: Float64Array, x: number, y: number): { inde
 export function uniqueEdges(cells: Cells): { internal: Segment[]; boundary: Segment[] } {
   const seen = new Map<string, { s: Segment; n: number }>()
   const key = (x: number, y: number) => `${Math.round(x * 1e5)},${Math.round(y * 1e5)}`
-  for (const cell of cells) {
-    if (!cell) continue
-    for (let i = 0; i < cell.length; i++) {
-      const a = cell[i], b = cell[(i + 1) % cell.length]
+  for (const ring of cells.flatMap(cell => cell ?? [])) {
+    for (let i = 0; i < ring.length; i++) {
+      const a = ring[i], b = ring[(i + 1) % ring.length]
       const ka = key(a[0], a[1]), kb = key(b[0], b[1])
       if (ka === kb) continue
       const k = ka < kb ? `${ka}|${kb}` : `${kb}|${ka}`
