@@ -1,6 +1,7 @@
 // Reads the closed outlines in an SVG file, so a drawing can become the sheet's shape. Plain TypeScript with
 // no DOM, so it runs in tests too. Curves and arcs are flattened into short straight segments, transforms are
-// applied, and everything is converted to millimetres using the file's own size.
+// applied, and everything is converted to millimetres using the file's own size. A file that is only a picture
+// trimmed by a clipping mask, as Illustrator saves a shape it can't write as SVG, gives the mask's outline.
 import type { Polygon, Vec } from '../voronoi/geometry'
 
 export type SvgUnits = 'file' | 'css' | 'illustrator'
@@ -8,14 +9,25 @@ export type SvgOutlines = {
   rings: Polygon[] // closed outlines in millimetres, in file order
   units: SvgUnits // 'file': the file gives its size; 'css': assumed 96 per inch; 'illustrator': assumed 72 per inch
   open: number // open paths that were left out because they don't enclose anything
+  // True when the file draws no closed shapes, only pictures, and the rings are the outlines of the clipping
+  // masks that trim them. Illustrator saves a shape it can't write as SVG this way: a picture of it, clipped to its outline.
+  fromClip: boolean
 }
 export class SvgShapeError extends Error {}
+
+// Illustrator saves a shape as a picture when SVG can't describe its look: a freeform gradient, a mesh or an effect.
+export const PICTURE_ONLY = 'This SVG is only a picture, with no lines. In Illustrator, select the shape, click Clear Appearance '
+  + 'in the Appearance panel, add a stroke and export again.'
 
 const MM: Record<string, number> = { mm: 1, cm: 10, q: 0.25, in: 25.4, pt: 25.4 / 72, pc: 25.4 / 6, px: 25.4 / 96, '': 25.4 / 96 }
 // Elements whose contents are never drawn directly, or aren't outlines.
 const SKIP = new Set(['defs', 'symbol', 'clippath', 'mask', 'pattern', 'marker', 'style', 'script', 'title', 'desc', 'metadata',
   'text', 'foreignobject', 'lineargradient', 'radialgradient', 'filter', 'image', 'switch'])
+// Of those, the ones that are only ever drawn where something else refers to them.
+const UNDRAWN = new Set(['defs', 'symbol', 'clippath', 'mask', 'pattern', 'marker', 'style', 'script', 'title', 'desc', 'metadata',
+  'lineargradient', 'radialgradient', 'filter'])
 const MAX_POINTS = 200_000
+const TOO_DETAILED = 'This SVG has too much detail to use as a shape. Simplify it and try again.'
 
 type Matrix = [number, number, number, number, number, number] // x' = a x + c y + e, y' = b x + d y + f
 const IDENTITY: Matrix = [1, 0, 0, 1, 0, 0]
@@ -196,6 +208,33 @@ function attributesOf(text: string): Attributes {
 }
 const hidden = (a: Attributes) => /(^|;)\s*display\s*:\s*none/i.test(a.style ?? '') || a.display === 'none'
 
+// ---------- clipping paths ----------
+
+const urlId = (text: string) => /url\(\s*['"]?#([^'")\s]+)/.exec(text)?.[1] ?? null
+const clipInCss = (text: string) => { const m = /clip-path\s*:\s*([^;]*)/i.exec(text); return m ? urlId(m[1]) : null }
+
+// Classes that set a clipping path in the file's style sheets. Illustrator writes them this way:
+// .cls-2 { clip-path: url(#clippath); }
+function clipClasses(text: string): Map<string, string> {
+  const out = new Map<string, string>()
+  const css = text.replace(/<!--[\s\S]*?-->/g, '').replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
+  for (const [, sheet] of css.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi)) {
+    for (const [, selectors, rules] of sheet.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+      const id = clipInCss(rules)
+      if (id) for (const selector of selectors.split(',')) { const c = /^\s*\.([\w-]+)\s*$/.exec(selector); if (c) out.set(c[1], id) }
+    }
+  }
+  return out
+}
+
+// The clipping path an element uses, by its style, its class or its clip-path attribute.
+function clipOf(a: Attributes, byClass: Map<string, string>): string | null {
+  const inStyle = a.style ? clipInCss(a.style) : null
+  if (inStyle) return inStyle
+  for (const c of (a.class ?? '').split(/\s+/).reverse()) { const id = byClass.get(c); if (id) return id }
+  return a['clip-path'] ? urlId(a['clip-path']) : null
+}
+
 // A length in millimetres, or null when it's missing or a percentage.
 function lengthMm(text: string | undefined): number | null {
   if (!text) return null
@@ -228,14 +267,15 @@ function rectPoints(a: Attributes, tol: number): Vec[] | null {
 }
 
 // Closed outlines from one element, in its own coordinates. Open paths count as closed when their ends meet.
-function outlinesOf(name: string, a: Attributes, tol: number): { rings: Vec[][]; open: number } {
+// In a clipping path, a filled area, every part counts as closed.
+function outlinesOf(name: string, a: Attributes, tol: number, filled = false): { rings: Vec[][]; open: number } {
   const rings: Vec[][] = []
   let open = 0
   const add = (points: Vec[], closed: boolean) => {
     if (points.length < 2) return
     const first = points[0], last = points[points.length - 1]
     const meets = Math.hypot(first[0] - last[0], first[1] - last[1]) <= tol * 4
-    if (!closed && !meets) { open++; return }
+    if (!closed && !meets && !filled) { open++; return }
     const ring = meets ? points.slice(0, -1) : points
     if (ring.length >= 3) rings.push(ring)
   }
@@ -250,7 +290,7 @@ function outlinesOf(name: string, a: Attributes, tol: number): { rings: Vec[][];
     const points: Vec[] = []
     for (let k = 0; k + 1 < v.length; k += 2) points.push([v[k], v[k + 1]])
     add(points, name === 'polygon')
-  } else if (name === 'line') open++
+  } else if (name === 'line' && !filled) open++
   return { rings, open }
 }
 
@@ -263,7 +303,15 @@ export function readSvgOutlines(text: string, tolerance = 0.02): SvgOutlines {
   const rings: Polygon[] = []
   let open = 0, total = 0, units: SvgUnits = 'css'
   let rootScale = 0 // millimetres per user unit
-  type Frame = { name: string; m: Matrix; skip: boolean }
+  let rootM = IDENTITY
+  // Clipping paths, in their own coordinates, and where each is used. They're placed in the user space of the
+  // element that uses them, so they only become rings at the end, if the file has no closed shapes of its own.
+  const clipClass = clipClasses(text)
+  const clips = new Map<string, Vec[][]>()
+  const clipUses: { id: string; m: Matrix }[] = []
+  let clipTotal = 0, pictures = 0
+  // clip: the clipping path whose outline this element is part of
+  type Frame = { name: string; m: Matrix; skip: boolean; clip: string | null }
   const stack: Frame[] = []
   for (const tag of body.matchAll(/<(\/?)([A-Za-z_][\w:.-]*)([^>]*?)(\/?)>/g)) {
     const [, closing, rawName, rest, selfClosing] = tag
@@ -278,6 +326,13 @@ export function readSvgOutlines(text: string, tolerance = 0.02): SvgOutlines {
     const parent = stack[stack.length - 1]
     let m = parent ? parent.m : IDENTITY
     const skip = Boolean(parent?.skip) || SKIP.has(name) || hidden(a)
+    let clip: string | null = null
+    if (name === 'clippath') {
+      // objectBoundingBox clips are sized to whatever uses them, so they give no outline of their own.
+      clip = a.clippathunits?.toLowerCase() === 'objectboundingbox' || hidden(a) ? null : a.id ?? null
+      m = IDENTITY
+    } else if (parent?.clip && !SKIP.has(name) && !hidden(a)) clip = parent.clip
+    if (name === 'image' && !parent?.skip && !hidden(a)) pictures++
     if (name === 'svg' && !parent) {
       const vb = numbers(a.viewbox ?? '')
       const w = lengthMm(a.width), h = lengthMm(a.height)
@@ -299,22 +354,56 @@ export function readSvgOutlines(text: string, tolerance = 0.02): SvgOutlines {
       m = multiply(m, [1, 0, 0, 1, Number(a.x ?? 0) || 0, Number(a.y ?? 0) || 0])
     }
     if (a.transform) m = multiply(m, parseTransform(a.transform))
-    if (!skip && ['path', 'rect', 'circle', 'ellipse', 'polygon', 'polyline', 'line'].includes(name)) {
+    if (name === 'svg' && !parent) rootM = m
+    const shape = ['path', 'rect', 'circle', 'ellipse', 'polygon', 'polyline', 'line'].includes(name)
+    if (!skip && shape) {
       const tol = tolerance / Math.max(1e-12, matrixScale(m))
       const found = outlinesOf(name, a, tol)
       open += found.open
       for (const ring of found.rings) {
         total += ring.length
-        if (total > MAX_POINTS) throw new SvgShapeError('This SVG has too much detail to use as a shape. Simplify it and try again.')
+        if (total > MAX_POINTS) throw new SvgShapeError(TOO_DETAILED)
+        rings.push(ring.map(p => apply(m, p)))
+      }
+    } else if (clip && shape) {
+      // A clipping path's scale on the page is known only where it's used, so curves are flattened as if it
+      // were used at the file's own scale.
+      const tol = tolerance / Math.max(1e-12, rootScale * matrixScale(m))
+      const entry = clips.get(clip) ?? []
+      clips.set(clip, entry)
+      for (const ring of outlinesOf(name, a, tol, true).rings) {
+        clipTotal += ring.length
+        if (clipTotal > MAX_POINTS) throw new SvgShapeError(TOO_DETAILED)
+        entry.push(ring.map(p => apply(m, p)))
+      }
+    }
+    // Pictures and text are drawn too, though they aren't outlines, so a clip they use counts.
+    if (!parent?.skip && !hidden(a) && !UNDRAWN.has(name)) { const id = clipOf(a, clipClass); if (id) clipUses.push({ id, m }) }
+    if (!selfClosing) stack.push({ name, m, skip, clip })
+  }
+  if (!rootScale) throw new SvgShapeError('This file is not an SVG drawing.')
+  // A file of pictures alone has no closed outlines, but the clipping paths that trim the pictures are their outlines.
+  let fromClip = false
+  if (!rings.length && clips.size) {
+    const used = clipUses.filter(u => clips.get(u.id)?.length)
+    // A clip used in a way this reader doesn't follow is placed on the page as it is.
+    const placed = used.length ? used : [...clips.keys()].map(id => ({ id, m: rootM }))
+    const seen = new Set<string>()
+    for (const { id, m } of placed) {
+      const key = `${id} ${m.join(' ')}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      for (const ring of clips.get(id)!) {
+        total += ring.length
+        if (total > MAX_POINTS) throw new SvgShapeError(TOO_DETAILED)
         rings.push(ring.map(p => apply(m, p)))
       }
     }
-    if (!selfClosing) stack.push({ name, m, skip })
+    fromClip = rings.length > 0
   }
-  if (!rootScale) throw new SvgShapeError('This file is not an SVG drawing.')
   if (!rings.length) {
     throw new SvgShapeError(open ? 'This SVG has only open lines. Close the outline (join its ends) so it encloses an area, and try again.'
-      : 'This SVG has no closed outlines to use as a shape.')
+      : pictures ? PICTURE_ONLY : 'This SVG has no closed outlines to use as a shape.')
   }
-  return { rings, units, open }
+  return { rings, units, open, fromClip }
 }

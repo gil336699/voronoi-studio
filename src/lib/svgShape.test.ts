@@ -2,8 +2,10 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { signedArea } from '../voronoi/geometry'
 import { shapeFromOutlines, ShapeError } from '../voronoi/shape'
-import { parsePathData, parseTransform, readSvgOutlines, SvgShapeError } from './svgShape'
+import { contains, sheetRegion } from '../voronoi/region'
+import { parsePathData, parseTransform, PICTURE_ONLY, readSvgOutlines, SvgShapeError } from './svgShape'
 
+const PT = 25.4 / 72
 const fixture = (name: string) => readFileSync(new URL(`../../test-fixtures/${name}`, import.meta.url), 'utf8')
 const box = (points: [number, number][]) => {
   const xs = points.map(p => p[0]), ys = points.map(p => p[1])
@@ -74,6 +76,66 @@ describe('SVG outlines', () => {
     expect(rings).toHaveLength(1)
     const [x0, , x1] = box(rings[0])
     expect(x1 - x0).toBeCloseTo(48 * (25.4 / 96), 2) // 96 user units per inch
+  })
+
+  it('reads a picture’s outline from the clipping mask that trims it, as Illustrator exports one', () => {
+    // Gil’s JHU ICE asset: a picture of the page with a ticket-shaped window, clipped to that outline by a class.
+    const ticket = 'M243,425.6c0,2.49-2.01,4.5-4.5,4.5-7.44,0-13.5,6.06-13.5,13.5,0,2.49-2.01,4.5-4.5,4.5H92c-2.49,0-4.5-2.01-4.5-4.5,'
+      + '0-7.44-6.06-13.5-13.5-13.5-2.49,0-4.5-2.01-4.5-4.5v-152.04c0-2.49,2.01-4.5,4.5-4.5,7.44,0,13.5-6.06,13.5-13.5,0-2.49,2.01-4.5,'
+      + '4.5-4.5h128.5c2.49,0,4.5,2.01,4.5,4.5,0,7.44,6.06,13.5,13.5,13.5,2.49,0,4.5,2.01,4.5,4.5v152.04Z'
+    const asset = `<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Layer_2" data-name="Layer 2" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 688 868">
+  <defs><style>
+      .cls-1 { fill: none; }
+
+      .cls-2 { clip-path: url(#clippath); }
+    </style>
+    <clipPath id="clippath"><path class="cls-1" d="M2,2v864h684V2H2Z${ticket}"/></clipPath></defs>
+  <g id="Layer_1-2" data-name="Layer 1"><g class="cls-2">
+    <image width="688" height="868" xlink:href="data:image/png;base64,iVBORw0KGgo="/>
+  </g></g>
+</svg>`
+    const outlines = readSvgOutlines(asset)
+    expect(outlines.fromClip).toBe(true)
+    expect(outlines.units).toBe('illustrator')
+    expect(outlines.rings).toHaveLength(2)
+    expect(box(outlines.rings[0]).map(v => v / PT)).toEqual([2, 2, 686, 866].map(v => expect.closeTo(v, 6)))
+    // The sheet is the page with the ticket as a hole.
+    const shape = shapeFromOutlines(outlines.rings, 'asset.svg', outlines.units)
+    expect(shape.width).toBeCloseTo(684 * PT, 3)
+    expect(shape.height).toBeCloseTo(864 * PT, 3)
+    const sheet = sheetRegion(shape.width, shape.height, 'custom', shape)
+    expect(contains(sheet, 400 * PT, 600 * PT)).toBe(true)
+    expect(contains(sheet, (150 - 2) * PT, (350 - 2) * PT)).toBe(false) // inside the ticket window
+  })
+
+  it('places a clipping mask in the space of whatever uses it', () => {
+    const read = (use: string) => readSvgOutlines(`<svg xmlns="http://www.w3.org/2000/svg" width="100mm" height="100mm" viewBox="0 0 100 100">
+      <defs><clipPath id="c" transform="translate(5 0)"><path d="M0 0H10V10H0"/></clipPath></defs>
+      <g transform="translate(20 30)"><image ${use} width="50" height="50" href="a.png"/></g></svg>`)
+    const placed = [[[25, 30], [35, 30], [35, 40], [25, 40]]]
+    expect(read('clip-path="url(#c)"').rings).toEqual(placed)
+    expect(read('style="opacity:.5; clip-path: url(\'#c\')"').rings).toEqual(placed)
+    expect(read('transform="scale(2)" clip-path="url(#c)"').rings).toEqual([[[30, 30], [50, 30], [50, 50], [30, 50]]])
+    // Used twice in the same place, it's still one outline.
+    expect(read('clip-path="url(#c)"/><image clip-path="url(#c)"').rings).toEqual(placed)
+    // A class from a style sheet wrapped in CDATA.
+    const cdata = readSvgOutlines(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><style><![CDATA[ .a, .clip { clip-path: url(#c) } ]]></style>
+      <clipPath id="c"><circle cx="50" cy="50" r="20"/></clipPath><image class="x clip" width="100" height="100" href="a.png"/></svg>`)
+    expect(cdata.fromClip).toBe(true)
+    const px = 25.4 / 96
+    for (const [x, y] of cdata.rings[0]) expect(Math.hypot(x / px - 50, y / px - 50)).toBeCloseTo(20, 6)
+  })
+
+  it('prefers closed shapes to clipping masks, and says when a file is only a picture', () => {
+    const both = readSvgOutlines(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><clipPath id="c"><rect width="10" height="10"/></clipPath></defs>
+      <image clip-path="url(#c)" width="50" height="50" href="a.png"/><circle cx="50" cy="50" r="20"/></svg>`)
+    expect(both.fromClip).toBe(false)
+    expect(both.rings).toHaveLength(1)
+    expect(() => readSvgOutlines('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><image width="10" height="10" href="a.png"/></svg>')).toThrow(PICTURE_ONLY)
+    // A clip sized to whatever uses it has no outline of its own.
+    expect(() => readSvgOutlines(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><clipPath id="c" clipPathUnits="objectBoundingBox"><rect width="1" height="1"/></clipPath>
+      <image clip-path="url(#c)" width="10" height="10" href="a.png"/></svg>`)).toThrow('only a picture')
   })
 
   it('explains files it cannot use', () => {

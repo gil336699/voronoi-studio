@@ -1,5 +1,10 @@
 # Voronoi Studio Changelog
 
+## 1.2.1 2026-11-08
+
+- **Pictures trimmed by a clipping mask import.** When Illustrator can't write a shape's look as SVG, it saves a picture of the shape clipped to its outline, so the file has no paths, and Voronoi Studio said "This SVG has no closed outlines to use as a shape." Files with no closed outlines of their own now use the clipping mask's outline as the sheet, placed where the mask is used, whether a style, a class in the style sheet or an attribute applies it. The status says the file is a picture.
+- A file that is only a picture now says so and how to fix it in Illustrator.
+
 ## 1.2.0 2026-11-08
 
 - **Exports follow the view.** Laser SVG and DXF now hold what the Sites, Edges or Holes, and Delaunay buttons show, as the artwork SVG and PNG already did. Sites are green circles (layer `SITES` in DXF) and Delaunay lines are magenta (layer `DELAUNAY`), ahead of the red cuts, so laser software can score, engrave or skip them. Hiding Holes or Edges leaves the cells out of the cut file. Sites are shown by default, so turn them off for a file with only cuts.

@@ -77,6 +77,7 @@ Any closed outline in an SVG can be the sheet: a logo, a lamp shade, a pill-shap
 | --- | --- |
 | What's read | Paths, rectangles (rounded too), circles, ellipses and polygons, with their transforms. Curves are flattened to within 0.02 mm. Open lines are left out, and the app says how many. |
 | Holes | Outlines inside other outlines are holes, the way laser software reads nested cut lines. Overlapping outlines cancel where they overlap. |
+| Pictures | When Illustrator can't write a shape's look as SVG (a freeform gradient, a mesh or an effect), it saves a picture of the shape trimmed by a clipping mask. A file like that, with no closed outlines of its own, gives the mask's outline instead, placed where the mask is used, and the app says so. A picture with no mask can't be used; the app says how to fix it in Illustrator. |
 | Size | Taken from the file's width and height. A file that doesn't give them is read at 96 units per inch, the web standard, or 72 if it looks like it came from Illustrator. The Sheet tab says when it had to assume, so check the size there. |
 | Resizing | Width and height keep the shape's proportions. Swap is off, since it would stretch the shape. |
 | Cut files | The shape's holes are cut with the other inner cuts, ahead of its outside edge. |

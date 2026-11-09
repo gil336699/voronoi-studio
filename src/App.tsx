@@ -160,7 +160,8 @@ export function App() {
       if (edited) design.generate() // already confirmed: start fresh in the new shape
       setTab('sheet')
       const skipped = outlines.open ? ` ${outlines.open} open ${outlines.open === 1 ? 'line was' : 'lines were'} left out.` : ''
-      setStatus({ text: `Using ${file.name} as the sheet.${skipped}`, warning: Boolean(outlines.open) })
+      const using = outlines.fromClip ? `${file.name} is a picture, so the outline of its clipping mask is the sheet.` : `Using ${file.name} as the sheet.`
+      setStatus({ text: `${using}${skipped}`, warning: Boolean(outlines.open) || outlines.fromClip })
     } catch (error) {
       const known = error instanceof SvgShapeError || error instanceof ShapeError
       setStatus({ text: known ? error.message : `${file.name} could not be read as a shape.`, warning: true })
