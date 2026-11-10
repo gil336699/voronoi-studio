@@ -61,6 +61,37 @@ describe('custom sheet shapes', () => {
     }
   })
 
+  it('fills every separate piece of a shape, with a count or a spacing', () => {
+    // Three 80 × 100 mm pieces, 30 mm apart: growth from one piece can't reach the others.
+    const three = shapeFromOutlines([0, 110, 220].map(x => [[x, 0], [x + 80, 0], [x + 80, 100], [x, 100]] as Polygon), 'three.svg')
+    const region = patternRegion({ ...settings, width: 300, height: 100, customShape: three, border: 0 })
+    for (const over of [{}, { autoSpacing: false, spacing: 10 }]) {
+      const { points } = seedPoints(seed(over), region)
+      const pieces = [0, 0, 0]
+      for (let i = 0; i < points.length; i += 2) pieces[Math.floor(points[i] / 110)]++
+      const n = points.length / 2
+      for (const p of pieces) expect(p / n).toBeGreaterThan(0.28)
+    }
+  })
+
+  it('fills pieces thinner than the spacing, such as the strokes of lettering', () => {
+    // Twenty 1–3 mm strokes, 25 mm apart: thinner than a grid cell, so they can fall between cell centres.
+    for (const w of [1, 2, 3]) {
+      const comb = shapeFromOutlines(Array.from({ length: 20 }, (_, k) => [[k * 25, 0], [k * 25 + w, 0], [k * 25 + w, 200], [k * 25, 200]] as Polygon), 'comb.svg')
+      const region = patternRegion({ ...settings, width: 475 + w, height: 200, customShape: comb, border: 0 })
+      const { points } = seedPoints(seed({ count: 300, seed: 2 }), region)
+      const strokes = new Array(20).fill(0)
+      for (let i = 0; i < points.length; i += 2) strokes[Math.floor(points[i] / 25)]++
+      expect(strokes.filter(n => n === 0)).toEqual([])
+    }
+  })
+
+  it('gives the full count even with a single try per point', () => {
+    for (const region of [patternRegion(settings), sheetRegion(200, 200, 'rect')]) {
+      expect(seedPoints(seed({ tries: 1, count: 369 }), region).points.length / 2).toBe(369)
+    }
+  })
+
   it('keeps relaxed points and gradients inside the shape', () => {
     const region = patternRegion(settings)
     const density = { mode: 'radial' as const, strength: 6, angle: 0, invert: true }

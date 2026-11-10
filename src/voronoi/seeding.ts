@@ -66,8 +66,8 @@ export function poissonDisk(region: Region, spacing: number, tries: number, dens
   const grid = new Int32Array(gw * gh).fill(-1)
   const reach = Math.ceil(rMax / cell)
   const xs: number[] = [], ys: number[] = [], active: number[] = []
-  const gx = (x: number) => Math.min(gw - 1, Math.floor((x - region.x0) / cell))
-  const gy = (y: number) => Math.min(gh - 1, Math.floor((y - region.y0) / cell))
+  const gx = (x: number) => Math.max(0, Math.min(gw - 1, Math.floor((x - region.x0) / cell)))
+  const gy = (y: number) => Math.max(0, Math.min(gh - 1, Math.floor((y - region.y0) / cell)))
   const fits = (x: number, y: number) => {
     const r = radius(x, y), r2 = r * r
     const cx = gx(x), cy = gy(y)
@@ -81,27 +81,80 @@ export function poissonDisk(region: Region, spacing: number, tries: number, dens
     }
     return true
   }
+  // Grid cells whose centre lies within twice the spacing of a point: the parts the growth has reached.
+  const reached = new Uint8Array(gw * gh)
   const add = (x: number, y: number) => {
     grid[gy(y) * gw + gx(x)] = xs.length
     active.push(xs.length); xs.push(x); ys.push(y)
+    const d = 2 * radius(x, y), k = Math.ceil(d / cell), cx = gx(x), cy = gy(y)
+    for (let j = Math.max(0, cy - k); j <= Math.min(gh - 1, cy + k); j++) {
+      const dy = region.y0 + (j + 0.5) * cell - y
+      for (let i = Math.max(0, cx - k); i <= Math.min(gw - 1, cx + k); i++) {
+        const dx = region.x0 + (i + 0.5) * cell - x
+        if (dx * dx + dy * dy <= d * d) reached[j * gw + i] = 1
+      }
+    }
   }
   for (let attempt = 0; attempt < 1000 && !xs.length; attempt++) {
     const x = region.x0 + rng() * w, y = region.y0 + rng() * h
     if (contains(region, x, y)) add(x, y)
   }
   let capped = false
-  while (active.length) {
-    if (xs.length >= limit) { capped = true; break }
-    const slot = Math.floor(rng() * active.length)
-    const base = active[slot]
-    const r = radius(xs[base], ys[base])
-    let placed = false
-    for (let t = 0; t < tries; t++) {
-      const angle = rng() * Math.PI * 2, dist = r * (1 + rng())
-      const x = xs[base] + Math.cos(angle) * dist, y = ys[base] + Math.sin(angle) * dist
-      if (contains(region, x, y) && fits(x, y)) { add(x, y); placed = true; break }
+  const grow = () => {
+    while (active.length) {
+      if (xs.length >= limit) { capped = true; return }
+      const slot = Math.floor(rng() * active.length)
+      const base = active[slot]
+      const r = radius(xs[base], ys[base])
+      let placed = false
+      for (let t = 0; t < tries; t++) {
+        const angle = rng() * Math.PI * 2, dist = r * (1 + rng())
+        const x = xs[base] + Math.cos(angle) * dist, y = ys[base] + Math.sin(angle) * dist
+        if (contains(region, x, y) && fits(x, y)) { add(x, y); placed = true; break }
+      }
+      if (!placed) { active[slot] = active[active.length - 1]; active.pop() }
     }
-    if (!placed) { active[slot] = active[active.length - 1]; active.pop() }
+  }
+  grow()
+  // Growth only spreads to nearby spots, so it can't jump to a separate piece of an imported shape, and with
+  // very few tries it can die out early. Start it again anywhere it hasn't reached. A normal fill reaches
+  // everywhere, and the restarts use no random numbers, so its points stay exactly as they were.
+  const restart = (x: number, y: number) => {
+    if (reached[gy(y) * gw + gx(x)] || !contains(region, x, y) || !fits(x, y)) return false
+    add(x, y); grow(); return true
+  }
+  for (let c = 0; c < gw * gh && !capped; c++) {
+    const i = c % gw, j = (c - i) / gw
+    if (!reached[c]) restart(region.x0 + (i + 0.5) * cell, region.y0 + (j + 0.5) * cell)
+  }
+  // A piece thinner than a grid cell can miss every cell centre, so try just inside each edge of the shape too,
+  // wherever no point is within three times the spacing. That's farther than growth reaches, so a normal
+  // fill's small gaps along the edge are left as they were.
+  const far = (x: number, y: number) => {
+    const d = 3 * radius(x, y), k = Math.ceil(d / cell), cx = gx(x), cy = gy(y)
+    for (let j = Math.max(0, cy - k); j <= Math.min(gh - 1, cy + k); j++) {
+      for (let i = Math.max(0, cx - k); i <= Math.min(gw - 1, cx + k); i++) {
+        const q = grid[j * gw + i]
+        if (q >= 0 && (xs[q] - x) ** 2 + (ys[q] - y) ** 2 < d * d) return false
+      }
+    }
+    return true
+  }
+  for (const ring of region.rings ?? []) {
+    for (let a = 0; a < ring.length && !capped; a++) {
+      const [x0, y0] = ring[a], [x1, y1] = ring[(a + 1) % ring.length]
+      const len = Math.hypot(x1 - x0, y1 - y0)
+      if (!len) continue
+      const nx = (y0 - y1) / len, ny = (x1 - x0) / len
+      for (let t = Math.min(len / 2, cell / 2); t < len && !capped; t += cell) {
+        const px = x0 + ((x1 - x0) * t) / len, py = y0 + ((y1 - y0) * t) / len
+        if (reached[gy(py) * gw + gx(px)]) continue
+        for (const d of [cell / 4, -cell / 4, cell / 16, -cell / 16]) {
+          const x = px + nx * d, y = py + ny * d
+          if (contains(region, x, y) && far(x, y) && fits(x, y)) { add(x, y); grow(); break }
+        }
+      }
+    }
   }
   const points = new Float64Array(xs.length * 2)
   for (let i = 0; i < xs.length; i++) { points[i * 2] = xs[i]; points[i * 2 + 1] = ys[i] }
@@ -116,6 +169,12 @@ function evenPoints(settings: SeedSettings, count: number, region: Region, rng: 
   const mass = integrateDensity(field, region, (x, y) => contains(region, x, y))
   let spacing = Math.sqrt((POISSON_FILL * 2 / Math.sqrt(3)) * mass / count)
   let best = poissonDisk(region, spacing, tries, settings.density, rng, count * 3)
+  // Thin shapes hold more points than their area suggests. A sample that hit the limit may have left pieces
+  // unseeded, so widen the spacing until it fits.
+  for (let round = 0; round < 6 && best.capped; round++) {
+    spacing *= Math.SQRT2
+    best = poissonDisk(region, spacing, tries, settings.density, rng, count * 3)
+  }
   for (let round = 0; round < 4 && best.points.length / 2 < count; round++) {
     spacing *= Math.sqrt((best.points.length / 2) / count) * 0.97
     best = poissonDisk(region, spacing, tries, settings.density, rng, count * 3)
@@ -123,7 +182,7 @@ function evenPoints(settings: SeedSettings, count: number, region: Region, rng: 
   return { points: trim(best.points, count, rng), capped: false, spacing: best.spacing }
 }
 
-// Drop random points until the count is met, or top up with random points if a sample fell short.
+// Drop random points until the count is met. A sample that fell short is returned as it is.
 function trim(points: Float64Array, count: number, rng: Rng): Float64Array {
   const n = points.length / 2
   if (n === count) return points

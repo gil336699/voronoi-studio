@@ -59,10 +59,10 @@ export function Dock({ relaxSteps, auto, busy, canRelax, onGenerate, onRelax, on
       <div className="transport" role="group" aria-label="Pattern actions">
         <Button className="primary" shortcut="G" tip="Make a new pattern with a new random seed, using the current settings." onClick={onGenerate}>
           <Icon name="dice" />Generate</Button>
-        <Button shortcut="R" unavailable={canRelax || (auto && 'Auto-relax is already running.') || (busy && 'Wait for the current update to finish.')}
+        <Button shortcut="R" unavailable={canRelax || (auto && 'Auto-relax is on. Stop it to relax by steps.') || (busy && 'Wait for the current update to finish.')}
           tip={`Run ${steps} Lloyd relaxation ${steps === 1 ? 'step' : 'steps'}: each point moves to the centre of its cell, evening out sizes.`}
           onClick={onRelax}><Icon name="relax" /><span className="compact-label">Relax ×{steps}</span></Button>
-        <Button shortcut="P" pressed={auto} unavailable={canRelax || (!auto && busy && 'Wait for the current update to finish.')} tip={auto ? 'Stop relaxing.' : 'Keep relaxing until the points settle or you stop it.'}
+        <Button shortcut="P" pressed={auto} unavailable={canRelax || (!auto && busy && 'Wait for the current update to finish.')} tip={auto ? 'Stop relaxing.' : 'Keep relaxing until you stop it, even as you change settings.'}
           onClick={onAuto}><Icon name={auto ? 'pause' : 'play'} /><span className="compact-label">Auto-relax</span></Button>
       </div>
       <span className="timeline-status" role="status" data-warning={warning}>{status}</span>

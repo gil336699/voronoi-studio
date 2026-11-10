@@ -18,18 +18,23 @@ export type CutPaths = {
   sites: { points: Float64Array; r: number } | null
 }
 
+// Edges between points that lie almost on one circle, or clipped right at an imported outline, can be a few
+// microns long or less. As cuts they'd only make a laser fire a dot, so cut files leave out anything under 5 µm.
+const MIN_CUT = 0.005
+const cuttable = (segments: Segment[]) => segments.filter(([x0, y0, x1, y1]) => Math.hypot(x1 - x0, y1 - y0) >= MIN_CUT)
+
 export function cutPaths(g: Geometry, points: Float64Array, s: CutSettings): CutPaths {
   const sheet = splitHoles(g.sheet)
   const outer = s.sheetOutline ? [sheet.outer] : []
   const sheetHoles = s.sheetOutline && sheet.holes ? [sheet.holes] : []
-  const delaunay = s.showDelaunay ? g.delaunay : []
+  const delaunay = s.showDelaunay ? cuttable(g.delaunay) : []
   const sites = s.showSites && points.length ? { points, r: siteRadius(g.region, points.length / 2) } : null
   const marks = { delaunay, sites }
   if (!s.showEdges) return { lines: [], outlines: [], inner: sheetHoles, outer, ...marks }
   if (s.cellStyle === 'holes') return { lines: [], outlines: g.holes.map(h => h.outline), inner: sheetHoles, outer, ...marks }
   // The pattern's outline is its own cut when a border separates it from the sheet edge.
   const inner = s.border > 1e-9 || !s.sheetOutline ? [g.region] : []
-  return { lines: g.edges.internal, outlines: [], inner: [...inner, ...sheetHoles], outer, ...marks }
+  return { lines: cuttable(g.edges.internal), outlines: [], inner: [...inner, ...sheetHoles], outer, ...marks }
 }
 
 // The parts a cut file will hold, in plain words, for the File tab. Empty when there's nothing to cut.

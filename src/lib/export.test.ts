@@ -22,6 +22,16 @@ const dxfPairs = (text: string) => {
 }
 
 describe('SVG export', () => {
+  it('leaves cuts shorter than 5 µm out of cut files, so a laser never fires a dot', () => {
+    const { s, points, g } = design({ showSites: false, showDelaunay: true })
+    const tiny = [[50, 50, 50.0004, 50], [60, 60, 60, 60]] as [number, number, number, number][]
+    const geometry = { ...g, edges: { internal: [...g.edges.internal, ...tiny] }, delaunay: [...g.delaunay, ...tiny] }
+    const svg = laserSvg(geometry, points, s)
+    const zero = [...svg.matchAll(/M(-?[\d.]+) (-?[\d.]+)L(-?[\d.]+) (-?[\d.]+)/g)].filter(m => m[1] === m[3] && m[2] === m[4])
+    expect(zero).toEqual([])
+    expect(dxfPairs(cutDxf(geometry, points, s)).filter(([c, v]) => c === 0 && v === 'LINE').length).toBe(g.edges.internal.length + g.delaunay.length)
+  })
+
   it('writes the artwork at real size, with each edge once', () => {
     const { s, points, g } = design()
     const svg = artworkSvg(g, points, s)

@@ -64,7 +64,9 @@ const baseName = (s: Settings) => {
 export function App() {
   const [first] = useState(initialDesign)
   const [status, setStatus] = useState<Status>(() => (first.restored ? { text: 'Restored your last session.' } : null))
-  const design = useDesign(() => first, setStatus)
+  // Warnings stay until something else happens; Auto-relax's step messages don't count.
+  const designStatus = useCallback((next: Status) => setStatus(prev => (next?.quiet && prev?.warning ? prev : next)), [])
+  const design = useDesign(() => first, designStatus)
   const { doc } = design
   const s = doc.settings
   const [tab, setTab] = useState<TabId>('pattern')
@@ -255,7 +257,7 @@ export function App() {
   })
 
   const statusText = status?.text ?? (design.busy ? 'Updating the pattern…'
-    : `${count.toLocaleString()} cells · seed ${s.seed}${doc.handEdited ? ' · edited by hand' : ''}`)
+    : `${count.toLocaleString()} cells · seed ${s.seed}${doc.handEdited ? ' · edited by hand' : ''}${design.auto ? ' · Auto-relax on' : ''}`)
 
   return <main className="studio">
     <TooltipLayer />

@@ -11,7 +11,8 @@ import { PatternClient } from './worker/patternClient'
 // relax points. The rules for what a settings change does to the points are in lib/changes.ts.
 
 export type { Doc }
-export type Status = { text: string; warning?: boolean } | null
+// quiet: a routine Auto-relax message, which never replaces a warning that's showing.
+export type Status = { text: string; warning?: boolean; quiet?: boolean } | null
 
 const AUTO_MAX_STEPS = 3000
 
@@ -36,9 +37,13 @@ export function useDesign(initial: () => { doc: Doc; saved: boolean }, onStatus:
   const [spacing, setSpacing] = useState(0)
   const docRef = useRef(doc)
   const client = useRef<PatternClient | null>(null)
+  // Jobs started before the token last changed have their results dropped: after an Undo, a hand edit, New or
+  // Open, a new pattern request, or a sheet change that moved the points.
   const token = useRef(0)
-  const inFlight = useRef(false)
-  const queued = useRef<Settings | null>(null)
+  // The Relax press or a new pattern, one at a time. Auto-relax steps are counted separately.
+  const inFlight = useRef<'generate' | 'relax' | null>(null)
+  // A new pattern is wanted. It's made from the settings current when it starts, not when it was asked for.
+  const wanted = useRef(false)
   const autoOn = useRef(false)
   const status = useRef(onStatus)
   useEffect(() => { status.current = onStatus }, [onStatus])
@@ -60,22 +65,68 @@ export function useDesign(initial: () => { doc: Doc; saved: boolean }, onStatus:
     setDocState(next)
   }, [])
 
+  // Forget the jobs running and the pattern waiting, for Undo, Redo, New, Open and hand edits.
+  const drop = useCallback(() => { token.current++; wanted.current = false }, [])
+
   const stopAuto = useCallback((message?: string) => {
     if (!autoOn.current) return
     autoOn.current = false
     setAuto(false)
-    if (message) status.current({ text: message })
+    // Without a message (Undo, a hand edit), clear "Relaxing · step…" so it doesn't linger.
+    status.current(message ? { text: message } : null)
   }, [])
 
-  // Remake points in the worker. While one job runs, only the newest request waits; older ones are dropped.
-  const regenerate = useCallback((settings: Settings) => {
-    stopAuto()
-    const mine = ++token.current
-    if (inFlight.current) { queued.current = settings; return }
-    const start = (s: Settings, id: number) => {
-      inFlight.current = true
+  // Auto-relax stays on until it is stopped, so setting changes can be watched as they relax. Each new
+  // pattern, or points moved by a sheet change, starts the loop again; when the points settle it waits.
+  // A new number in autoLoop ends older loops, so only one ever runs, and only one step is ever in the
+  // worker: a step that returns after its loop was replaced hands over to the newest loop.
+  const autoLoop = useRef(0)
+  const autoStep = useRef(false)
+  const resume = useRef<() => void>(() => {})
+  const kickAuto = useCallback(() => {
+    if (!autoOn.current) return
+    const id = ++autoLoop.current
+    const begin = docRef.current
+    // Settled once no point moves more than a 2,000th of the typical spacing in a step.
+    const tolerance = typicalSpacing(patternRegion(begin.settings), begin.points.length / 2) / 2000
+    let steps = 0
+    const loop = () => {
+      // While a new pattern is being made, it restarts the loop when it arrives.
+      if (!autoOn.current || id !== autoLoop.current || inFlight.current || autoStep.current) return
+      const mine = token.current
+      const current = docRef.current
+      autoStep.current = true
+      run({ kind: 'relax', settings: current.settings, points: current.points, steps: 1 }).then(result => {
+        if (!autoOn.current || id !== autoLoop.current || mine !== token.current) return
+        steps++
+        apply({ ...docRef.current, points: result.points }, false)
+        const done = result.maxMove < tolerance ? 'Settled after' : steps >= AUTO_MAX_STEPS ? 'Paused after' : ''
+        // Short enough for the status line at 1280 px. The button stays pressed, and the status then ends
+        // "· Auto-relax on", to show it's still on. Quiet: these never replace a warning.
+        if (done) { status.current({ text: `${done} ${steps.toLocaleString()} ${steps === 1 ? 'step' : 'steps'}`, quiet: true }); return }
+        status.current({ text: `Relaxing · step ${steps.toLocaleString()}`, quiet: true })
+        window.setTimeout(loop, 16)
+      }).catch(() => stopAuto('Auto-relax stopped.'))
+        .finally(() => {
+          autoStep.current = false
+          if (id !== autoLoop.current || mine !== token.current) resume.current()
+        })
+    }
+    resume.current = loop
+    loop()
+  }, [apply, run, stopAuto])
+
+  // Make the wanted pattern in the worker. Called after every job, so a request made during a Relax press
+  // still runs; with nothing wanted, Auto-relax carries on.
+  const runQueue = useCallback(() => {
+    const step = () => {
+      if (inFlight.current) return
+      if (!wanted.current) { kickAuto(); return }
+      wanted.current = false
+      const id = token.current
+      inFlight.current = 'generate'
       setBusy(true)
-      run({ kind: 'generate', settings: s }).then(result => {
+      run({ kind: 'generate', settings: docRef.current.settings }).then(result => {
         if (id !== token.current) return
         apply({ ...docRef.current, points: result.points, handEdited: false, stale: false }, false)
         setCapped(result.capped)
@@ -83,104 +134,99 @@ export function useDesign(initial: () => { doc: Doc; saved: boolean }, onStatus:
         if (result.capped) { status.current({ text: 'Stopped at 20,000 points. Increase the spacing.', warning: true }); cappedShown.current = true }
         else if (cappedShown.current) { status.current(null); cappedShown.current = false }
       }).catch((error: Error) => status.current({ text: `The pattern could not be made: ${error.message}`, warning: true }))
-        .finally(() => {
-          inFlight.current = false
-          setBusy(false)
-          const next = queued.current
-          queued.current = null
-          if (next) start(next, token.current)
-        })
+        .finally(() => { inFlight.current = null; setBusy(false); step() })
     }
-    start(settings, mine)
-  }, [apply, run, stopAuto])
+    step()
+  }, [apply, run, kickAuto])
+
+  // Ask for a new pattern from the current settings. Results of jobs already running are dropped.
+  const regenerate = useCallback(() => {
+    token.current++
+    wanted.current = true
+    runQueue()
+  }, [runQueue])
 
   const change = useCallback((patch: Partial<Settings>, key?: string) => {
-    const { next, remake } = planChange(docRef.current, patch)
+    const prev = docRef.current
+    const { next, remake } = planChange(prev, patch)
     apply(next, `settings:${key ?? Object.keys(patch).join(',')}`)
-    if (remake) regenerate(next.settings)
-  }, [apply, regenerate])
+    if (remake) regenerate()
+    else if (next.points !== prev.points) {
+      // Points moved to follow the sheet. A pattern on its way is made again for the new sheet; a Relax press
+      // or Auto-relax step already running used the old positions, so its result is dropped.
+      if (inFlight.current === 'generate' || wanted.current) regenerate()
+      else { token.current++; kickAuto() }
+    }
+  }, [apply, regenerate, kickAuto])
 
   // A new pattern from the current settings, optionally with a new seed. Callers confirm first if points were edited.
   const generate = useCallback((seed?: number) => {
     const prev = docRef.current
     const settings = seed === undefined ? prev.settings : { ...prev.settings, seed }
     apply({ ...prev, settings, handEdited: false, stale: false }, null)
-    regenerate(settings)
+    regenerate()
   }, [apply, regenerate])
 
   const relaxOnce = useCallback(() => {
     if (inFlight.current || autoOn.current) return
     const before = docRef.current
     const mine = ++token.current
-    inFlight.current = true
+    inFlight.current = 'relax'
     setBusy(true)
     run({ kind: 'relax', settings: before.settings, points: before.points, steps: Math.max(1, before.settings.relaxSteps) }).then(result => {
       if (mine !== token.current) return
       setHistory(h => record(h, before, null))
       apply({ ...docRef.current, points: result.points }, false)
     }).catch((error: Error) => status.current({ text: `Relaxing failed: ${error.message}`, warning: true }))
-      .finally(() => { inFlight.current = false; setBusy(false) })
-  }, [apply, run])
+      .finally(() => { inFlight.current = null; setBusy(false); runQueue() })
+  }, [apply, run, runQueue])
 
   const toggleAuto = useCallback(() => {
     if (autoOn.current) { stopAuto('Auto-relax stopped.'); return }
     if (inFlight.current) return
     autoOn.current = true
     setAuto(true)
-    const mine = ++token.current
+    token.current++
     const start = docRef.current
     setHistory(h => record(h, start, null))
-    // Settled once no point moves more than a 2,000th of the typical spacing in a step.
-    const tolerance = typicalSpacing(patternRegion(start.settings), start.points.length / 2) / 2000
-    let steps = 0
-    const loop = () => {
-      if (!autoOn.current || mine !== token.current) return
-      const current = docRef.current
-      run({ kind: 'relax', settings: current.settings, points: current.points, steps: 1 }).then(result => {
-        if (!autoOn.current || mine !== token.current) return
-        steps++
-        apply({ ...docRef.current, points: result.points }, false)
-        if (result.maxMove < tolerance) { stopAuto(`Settled after ${steps.toLocaleString()} relax steps.`); return }
-        if (steps >= AUTO_MAX_STEPS) { stopAuto(`Stopped after ${AUTO_MAX_STEPS.toLocaleString()} steps.`); return }
-        status.current({ text: `Relaxing · step ${steps.toLocaleString()}` })
-        window.setTimeout(loop, 16)
-      }).catch(() => stopAuto('Auto-relax stopped.'))
-    }
     status.current({ text: 'Relaxing…' })
-    loop()
-  }, [apply, run, stopAuto])
+    kickAuto()
+  }, [kickAuto, stopAuto])
 
   // Hand edits: one undo step per gesture, then live updates while the pointer moves.
   const beginEdit = useCallback(() => {
     stopAuto()
-    token.current++
+    const pending = inFlight.current === 'generate' || wanted.current
+    drop()
     const before = docRef.current
     setHistory(h => record(h, before, null))
-  }, [stopAuto])
+    // A new pattern was on its way: the edits keep the old points, so the changed settings wait to be applied.
+    if (pending) apply({ ...before, stale: true }, false)
+  }, [apply, drop, stopAuto])
   const editPoints = useCallback((points: Float64Array) => apply({ ...docRef.current, points, handEdited: true }, false), [apply])
 
   // Replace the whole design, for New and Open. Undo can still return to the previous one.
   const replace = useCallback((next: Doc, isSaved: boolean) => {
     stopAuto()
-    token.current++
+    drop()
     apply(next, null)
     setSaved(isSaved ? next : null)
     setCapped(false)
     setSpacing(0) // the panel estimates the spacing until the next pattern reports it
-  }, [apply, stopAuto])
+  }, [apply, drop, stopAuto])
 
   const undo = useCallback(() => {
     const step = undoStep(history, docRef.current)
     if (!step) return
-    stopAuto(); token.current++; setSpacing(0)
+    stopAuto(); drop(); setSpacing(0)
     setHistory(step.history); docRef.current = step.state; setDocState(step.state)
-  }, [history, stopAuto])
+  }, [history, drop, stopAuto])
   const redo = useCallback(() => {
     const step = redoStep(history, docRef.current)
     if (!step) return
-    stopAuto(); token.current++; setSpacing(0)
+    stopAuto(); drop(); setSpacing(0)
     setHistory(step.history); docRef.current = step.state; setDocState(step.state)
-  }, [history, stopAuto])
+  }, [history, drop, stopAuto])
 
   return {
     doc, change, generate, relaxOnce, toggleAuto, beginEdit, editPoints, replace, undo, redo, stopAuto,

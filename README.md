@@ -49,7 +49,7 @@ Narrower windows show tool and action buttons as symbols only. On tablets the sh
 
 1. **Sheet.** Choose a preset such as a 200 mm tile, A4, a 12 × 12 in laser sheet or a Ø 100 mm coaster, or type a size. Choose Rectangle or Ellipse and a border. Or press **Import SVG shape…**, or drop an SVG on the window, to fill your own outline; outlines inside it become holes.
 2. **Pattern.** Set the number of cells and the placement. Add a density gradient for cells that get smaller toward one side, the centre or the edge.
-3. **Relax.** New patterns get a few relaxation steps. Press **Relax** for more, or **Auto-relax** to keep going until the points settle.
+3. **Relax.** New patterns get a few relaxation steps. Press **Relax** for more, or **Auto-relax** to keep going until you stop it. While it's on, change the cell count, placement, gradient or sheet and watch the new pattern relax; once the points settle it waits for your next change.
 4. **Edit by hand.** Drag points to move cells, Alt-click (or the Add tool) to add one, Shift-click (or the Erase tool) to remove one. Once points are edited by hand, pattern settings wait for **Apply settings…** so your edits aren't lost by accident.
 5. **Style.** **Lines** draws each edge once. **Holes** cuts each cell out, leaving a web of material, with rounded corners and a smallest-hole limit.
 6. **Save and export.** **Save** writes an editable `.voronoi.json` project with every point. **Laser SVG** and **DXF** are for cutting; **SVG** and **PNG** are for artwork.
@@ -77,6 +77,7 @@ Any closed outline in an SVG can be the sheet: a logo, a lamp shade, a pill-shap
 | --- | --- |
 | What's read | Paths, rectangles (rounded too), circles, ellipses and polygons, with their transforms. Curves are flattened to within 0.02 mm. Open lines are left out, and the app says how many. |
 | Holes | Outlines inside other outlines are holes, the way laser software reads nested cut lines. Overlapping outlines cancel where they overlap. |
+| Separate pieces | Every piece gets its share of cells, such as each letter of a logo. Even placement grows outwards from its points, so it starts again in any piece it can't reach. A border shrinks every piece, so thin letters can disappear; use a small or zero border for lettering. |
 | Pictures | When Illustrator can't write a shape's look as SVG (a freeform gradient, a mesh or an effect), it saves a picture of the shape trimmed by a clipping mask. A file like that, with no closed outlines of its own, gives the mask's outline instead, placed where the mask is used, and the app says so. A picture with no mask can't be used; the app says how to fix it in Illustrator. |
 | Size | Taken from the file's width and height. A file that doesn't give them is read at 96 units per inch, the web standard, or 72 if it looks like it came from Illustrator. The Sheet tab says when it had to assume, so check the size there. |
 | Resizing | Width and height keep the shape's proportions. Swap is off, since it would stretch the shape. |
@@ -104,7 +105,7 @@ Where a cell wraps right round a hole in the shape, the app leaves a bridge of w
 | PNG | The design at the sheet's pixels per inch, optionally with a transparent background. | px |
 | Project | Settings, every point and any imported shape, as `.voronoi.json` (schema `voronoi-studio/project`, version 2; version 1 files open too). | mm |
 
-Every export holds what the view shows: the **Sites**, **Edges** or **Holes**, and **Delaunay** buttons above the sheet decide what goes in, so turn Sites off for a file with only cuts. The File tab lists what a cut file will hold. Cut files contain each line once, so a laser never cuts the same edge twice. Exports always show the whole sheet, whatever the zoom.
+Every export holds what the view shows: the **Sites**, **Edges** or **Holes**, and **Delaunay** buttons above the sheet decide what goes in, so turn Sites off for a file with only cuts. The File tab lists what a cut file will hold. Cut files contain each line once, so a laser never cuts the same edge twice, and leave out cuts shorter than 5 µm, which a laser would only fire as a dot. Exports always show the whole sheet, whatever the zoom.
 
 ## Controls
 
@@ -152,7 +153,7 @@ On Windows and Linux, use Ctrl for ⌘. Space pans, as in most design tools, rat
 
 - **Cells.** [d3-delaunay](https://github.com/d3/d3-delaunay) builds the Delaunay triangulation and Voronoi cells, clipped to the pattern area. Ellipses are clipped against a 256-sided polygon, so a cell edge on the rim is within 0.008 % of the radius of the true ellipse.
 - **Even placement** uses Bridson's Poisson-disk sampling with a spacing that varies with the gradient. For a set count it tightens the spacing until there are enough points, then drops the extra few at random.
-- **Relaxation** is Lloyd's method: each point moves to the centre of its cell. With a gradient the centre is weighted by the density squared, which is what keeps the gradient through hundreds of steps. Auto-relax stops when no point moves more than 1/2,000 of the typical spacing in a step.
+- **Relaxation** is Lloyd's method: each point moves to the centre of its cell. With a gradient the centre is weighted by the density squared, which is what keeps the gradient through hundreds of steps. Auto-relax counts the points as settled, and waits, when no point moves more than 1/2,000 of the typical spacing in a step.
 - **Holes.** Each cell is convex, so it is shrunk by half the web plus the corner radius, then grown back by the radius with arcs. That gives exact round corners with no self-intersections. Small cells get the largest radius that fits.
 - **Imported shapes.** [Clipper2](https://github.com/PolyClipping/Clipper2), through [clipper2-ts](https://github.com/countertype/clipper2-ts), merges the outlines (even-odd), shrinks them by the border with round corners, and clips the cells that cross the outline. A grid of the outline's edges makes "is this point inside?" fast enough for Poisson-disk sampling. Cells wholly inside keep the exact method above; clipped cells can be concave, so their holes come from Clipper's offsets, with rounded corners drawn as short segments within 5 µm.
 - **Determinism.** A seeded random generator (mulberry32) makes every pattern repeatable from its seed and settings.
@@ -166,7 +167,7 @@ Measured on an Apple-silicon Mac, in the app (Chrome, Code tab preview, 1280 × 
 
 | Task | 300 cells | 1,500 cells | 10,000 cells |
 | --- | --- | --- | --- |
-| Make points, Even, in the worker (Node) | 4 ms | 25 ms | 170 ms |
+| Make points, Even, in the worker (Node) | 4 ms | 26 ms | 180 ms |
 | One relaxation step (Node) | under 1 ms | 3 ms | 12 ms |
 | Rebuild holes and measurements (Node) | 2 ms | 11 ms | 55 ms |
 | One update while dragging a point (app, Holes) | 9 ms | 23 ms | 234 ms |
@@ -176,7 +177,7 @@ Measured on an Apple-silicon Mac, in the app (Chrome, Code tab preview, 1280 × 
 | Imported shape, holes: rebuild (Node, 296 × 160 mm pill with a hole) | 6–9 ms | 12–16 ms | 81–95 ms (5,000 cells) |
 | Imported shape, holes: one update while dragging (app) | — | 28.5 ms median, 39 ms at the 90th percentile | — |
 
-Patterns up to a few thousand cells stay smooth. At 10,000 cells, editing by hand and auto-relaxing are slow; set the relax steps and press Relax instead.
+Patterns up to a few thousand cells stay smooth. With Auto-relax on while you drag the Cells slider, it kept relaxing at 45 steps/s with nearly 3,900 cells (production build, headless Chrome). At 10,000 cells, editing by hand and auto-relaxing are slow; set the relax steps and press Relax instead.
 
 - Up to 10,000 cells can be typed; spacing-driven placements stop at 20,000 points.
 - PNG export is limited to 16,384 px a side and 120 megapixels, which browsers can draw. Use SVG for larger work.

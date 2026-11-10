@@ -1,5 +1,18 @@
 # Voronoi Studio Changelog
 
+## 1.3.0 2026-11-10
+
+- **Auto-relax stays on until you stop it.** Change the cell count, placement, gradient, seed or sheet while it runs, or press Generate, and the new pattern keeps relaxing, so you can watch each change settle. Once the points settle it waits, still on, for your next change, and the status ends "· Auto-relax on". Stop, Undo, Redo, New, Open or editing points by hand turns it off.
+- **Every piece of an imported shape fills.** Even placement grows outwards from one point, so it couldn't reach separate pieces: Gil's JHU ICE logo got cells in 1 of its 46 pieces. Now each piece gets its share, including strokes thinner than the spacing. Patterns made with few tries per point or with a gradient sometimes left gaps more than twice the spacing wide; those now fill too, so the same seed can give a slightly different pattern than in 1.2. Saved projects keep their points and open unchanged.
+- Fixed: with Tries per point at 1, Even placement made a few dozen cells instead of the count.
+- Fixed: a setting changed while a Relax press was still running was lost. The panel showed the new value while the sheet kept the old pattern.
+- Fixed: changing the sheet while a new pattern was being made could keep the old pattern, or leave points outside the new border. The same could happen to a Relax press.
+- Fixed: Undo, Redo, New or Open straight after a setting change could bring back the pattern for the setting you had just undone or left.
+- Fixed: after Undo or a hand edit stopped Auto-relax, the status kept saying "Relaxing · step …" for a few seconds. Warnings, such as the 20,000-point limit or an imported picture, now stay while Auto-relax runs.
+- Fixed: cut files could hold cuts a few microns long or shorter, where points lie almost on one circle or a cell is clipped right at an imported outline. A laser could fire a dot there. Cut files now leave out anything under 5 µm.
+- Dark mode: panels are denser and secondary text is brighter, so text keeps 4.5:1 contrast when you zoom in and the white sheet slides under a panel.
+- On touch screens, the dock and tool buttons, Shuffle, Swap and the switch rows are at least 36 px.
+
 ## 1.2.1 2026-11-08
 
 - **Pictures trimmed by a clipping mask import.** When Illustrator can't write a shape's look as SVG, it saves a picture of the shape clipped to its outline, so the file has no paths, and Voronoi Studio said "This SVG has no closed outlines to use as a shape." Files with no closed outlines of their own now use the clipping mask's outline as the sheet, placed where the mask is used, whether a style, a class in the style sheet or an attribute applies it. The status says the file is a picture.

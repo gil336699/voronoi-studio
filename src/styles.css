@@ -59,7 +59,7 @@
     --orange: #ff9f0a;
     --green: #30d158;
     --label: rgba(255, 255, 255, .92);
-    --label-2: rgba(235, 235, 245, .66);
+    --label-2: rgba(235, 235, 245, .72);
     --label-3: rgba(235, 235, 245, .36);
     --separator: rgba(255, 255, 255, .1);
     --well: rgba(118, 118, 128, .24);
@@ -67,7 +67,8 @@
     --selected: rgba(255, 255, 255, .2);
     --selected-shadow: 0 1px 3px rgba(0, 0, 0, .3);
     --group: rgba(255, 255, 255, .05);
-    --glass: rgba(32, 35, 41, .5);
+    /* Dense enough that light text keeps 4.5:1 when a zoomed-in white sheet slides under a panel. */
+    --glass: rgba(32, 35, 41, .9);
     --glass-dense: rgba(38, 41, 47, .88);
     --glass-rim: rgba(255, 255, 255, .16);
     --glass-line: rgba(255, 255, 255, .08);
@@ -92,11 +93,6 @@
   :root { --glass: rgba(30, 32, 37, .96); --glass-line: rgba(255, 255, 255, .45); --separator: rgba(255, 255, 255, .35); --label-2: rgba(255, 255, 255, .82); }
 }
 
-* { box-sizing: border-box; }
-html, body, #root { width: 100%; height: 100%; margin: 0; overflow: hidden; }
-body { color: var(--label); background: var(--backdrop); font: 13px/1.4 var(--font-text); -webkit-font-smoothing: antialiased; }
-button, input, select, textarea { color: inherit; font: inherit; }
-h1, h2, p { margin: 0; }
 * { box-sizing: border-box; }
 html, body, #root { width: 100%; height: 100%; margin: 0; overflow: hidden; }
 body { color: var(--label); background: var(--backdrop); font: 13px/1.4 var(--font-text); -webkit-font-smoothing: antialiased; }
@@ -361,6 +357,13 @@ kbd { display: inline-block; padding: 1px 7px; border-radius: 6px; background: v
   .floating-bar button, .tab-list [role='tab'], .button-row[role='group'] button { min-height: 36px; }
   .floating-bar .icon-button { width: 36px; min-width: 36px; }
   select, .number-input { min-height: 36px; }
+  /* Small buttons and rows reach at least the 36 px touch size; icon buttons outside the bars get 40 px. */
+  .icon-button { width: 40px; min-width: 40px; }
+  .floating-bar button, .floating-bar button:has(.compact-label), .transport button:has(.compact-label) { min-width: 36px; width: auto; }
+  .transport button { min-height: 36px; }
+  .transport .icon-button { width: 36px; min-width: 36px; }
+  .seed-row button, .pair .swap, .inline-number, .switch-row, .more > summary { min-height: 36px; }
+  .pair .swap { width: 36px; min-width: 36px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
