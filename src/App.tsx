@@ -256,14 +256,17 @@ export function App() {
     return () => window.removeEventListener('keydown', onKey)
   })
 
+  // At 1280 px the status line holds about 220 px, so it keeps to the count and one or two short notes. While
+  // Auto-relax runs the seed no longer describes the points, and the panel notes held-back settings.
+  const notes = design.auto ? ['Auto-relax on'] : [`seed ${s.seed}`, doc.handEdited ? 'edited' : '']
   const statusText = status?.text ?? (design.busy ? 'Updating the pattern…'
-    : `${count.toLocaleString()} cells · seed ${s.seed}${doc.handEdited ? ' · edited by hand' : ''}${design.auto ? ' · Auto-relax on' : ''}`)
+    : [`${count.toLocaleString()} cells`, ...notes].filter(Boolean).join(' · '))
 
   return <main className="studio">
     <TooltipLayer />
     <div className="stage">
       <Stage geometry={geometry} points={doc.points} settings={s} tool={tool} frameRef={frameRef} controlRef={stageRef}
-        onBeginEdit={() => { design.beginEdit(); setStatus(null) }} onPoints={design.editPoints} onZoom={setZoom}
+        onBeginEdit={() => { design.beginEdit(); setStatus(null) }} onPoints={design.editPoints} onRelease={design.releasePoint} onZoom={setZoom}
         onNotice={text => setStatus({ text })} />
     </div>
 

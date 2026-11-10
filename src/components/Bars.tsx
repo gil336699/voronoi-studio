@@ -62,7 +62,7 @@ export function Dock({ relaxSteps, auto, busy, canRelax, onGenerate, onRelax, on
         <Button shortcut="R" unavailable={canRelax || (auto && 'Auto-relax is on. Stop it to relax by steps.') || (busy && 'Wait for the current update to finish.')}
           tip={`Run ${steps} Lloyd relaxation ${steps === 1 ? 'step' : 'steps'}: each point moves to the centre of its cell, evening out sizes.`}
           onClick={onRelax}><Icon name="relax" /><span className="compact-label">Relax ×{steps}</span></Button>
-        <Button shortcut="P" pressed={auto} unavailable={canRelax || (!auto && busy && 'Wait for the current update to finish.')} tip={auto ? 'Stop relaxing.' : 'Keep relaxing until you stop it, even as you change settings.'}
+        <Button shortcut="P" pressed={auto} unavailable={canRelax || (!auto && busy && 'Wait for the current update to finish.')} tip={auto ? 'Stop relaxing.' : 'Keep relaxing until you stop it, even as you change settings or move points.'}
           onClick={onAuto}><Icon name={auto ? 'pause' : 'play'} /><span className="compact-label">Auto-relax</span></Button>
       </div>
       <span className="timeline-status" role="status" data-warning={warning}>{status}</span>

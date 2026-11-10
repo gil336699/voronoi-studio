@@ -1,5 +1,10 @@
 # Voronoi Studio Changelog
 
+## 1.4.0 2026-11-10
+
+- **Auto-relax keeps running while you edit points by hand.** Drag a point and the cells around it relax as it moves. The point stays under the pointer until you let go, then it relaxes too. Adding or erasing cells keeps it running as well, and a settled pattern starts relaxing again when you edit it. Only Stop, Undo, Redo, New and Open turn it off now.
+- The status under the sheet is shorter so it fits at 1280 px wide: "1,500 cells · seed 634238 · edited", or "1,500 cells · Auto-relax on" while Auto-relax runs. With a six-digit seed and hand edits it used to be cut off.
+
 ## 1.3.0 2026-11-10
 
 - **Auto-relax stays on until you stop it.** Change the cell count, placement, gradient, seed or sheet while it runs, or press Generate, and the new pattern keeps relaxing, so you can watch each change settle. Once the points settle it waits, still on, for your next change, and the status ends "· Auto-relax on". Stop, Undo, Redo, New, Open or editing points by hand turns it off.

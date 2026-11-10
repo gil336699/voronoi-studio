@@ -22,7 +22,7 @@ const FIT_PADDING = 20
 // The sheet preview. It fills the window behind the panels and fits the sheet into the free area between
 // them (the frame). Pointer input edits points: drag to move, Alt-click to add, Shift-click to erase,
 // Space or the Pan tool to pan, wheel or pinch to zoom.
-export function Stage({ geometry, points, settings, tool, frameRef, controlRef, onBeginEdit, onPoints, onZoom, onNotice }: {
+export function Stage({ geometry, points, settings, tool, frameRef, controlRef, onBeginEdit, onPoints, onRelease, onZoom, onNotice }: {
   geometry: Geometry
   points: Float64Array
   settings: Settings
@@ -30,7 +30,9 @@ export function Stage({ geometry, points, settings, tool, frameRef, controlRef, 
   frameRef: RefObject<HTMLDivElement | null>
   controlRef: RefObject<StageControls | null>
   onBeginEdit: (kind: EditKind) => void
-  onPoints: (points: Float64Array) => void
+  // held: the index of the point under the pointer while dragging, so Auto-relax leaves it there.
+  onPoints: (points: Float64Array, held?: number) => void
+  onRelease: () => void
   onZoom: (zoom: number) => void
   onNotice: (text: string) => void
 }) {
@@ -161,6 +163,7 @@ export function Stage({ geometry, points, settings, tool, frameRef, controlRef, 
       // Two fingers: pinch to zoom and drag to pan. Whatever one finger started is dropped.
       const [a, b] = [...pointers.current.values()]
       const [wx, wy] = toWorld((a.x + b.x) / 2, (a.y + b.y) / 2)
+      if (drag.current?.kind === 'point') onRelease()
       drag.current = { kind: 'pinch', distance: Math.hypot(a.x - b.x, a.y - b.y), midX: (a.x + b.x) / 2, midY: (a.y + b.y) / 2, view, worldX: wx, worldY: wy }
       return
     }
@@ -179,7 +182,7 @@ export function Stage({ geometry, points, settings, tool, frameRef, controlRef, 
       const next = new Float64Array(live.current.length + 2)
       next.set(live.current); next[next.length - 2] = px; next[next.length - 1] = py
       live.current = next
-      onPoints(next)
+      onPoints(next, next.length / 2 - 1)
       drag.current = { kind: 'point', index: next.length / 2 - 1, dx: 0, dy: 0 }
       setCursor('grabbing')
       return
@@ -223,7 +226,7 @@ export function Stage({ geometry, points, settings, tool, frameRef, controlRef, 
       const next = live.current.slice()
       next[d.index * 2] = px; next[d.index * 2 + 1] = py
       live.current = next
-      onPoints(next)
+      onPoints(next, d.index)
       return
     }
     if (d?.kind === 'erase') { d.last = eraseAt(x, y, d.last); return }
@@ -252,7 +255,10 @@ export function Stage({ geometry, points, settings, tool, frameRef, controlRef, 
       drag.current = { kind: 'pan', startX: p.x, startY: p.y, panX: view.panX, panY: view.panY }
       return
     }
-    if (pointers.current.size === 0) { drag.current = null; setCursor(space.current || tool === 'pan' ? 'grab' : 'default') }
+    if (pointers.current.size === 0) {
+      if (drag.current?.kind === 'point') onRelease()
+      drag.current = null; setCursor(space.current || tool === 'pan' ? 'grab' : 'default')
+    }
   }
 
   return <div ref={box} className="stage-canvas">

@@ -16,6 +16,17 @@ export type Status = { text: string; warning?: boolean; quiet?: boolean } | null
 
 const AUTO_MAX_STEPS = 3000
 
+// A relax step's result, keeping any point the person moved while it ran (`from` is what the step started
+// with, `now` the points since) and the point they're holding. Null when points were added or erased meanwhile.
+export function keepEdits(relaxed: Float64Array, from: Float64Array, now: Float64Array, held = -1): Float64Array | null {
+  if (now.length !== from.length) return null
+  let out = relaxed
+  const keep = (i: number) => { if (out === relaxed) out = relaxed.slice(); out[i] = now[i]; out[i + 1] = now[i + 1] }
+  if (now !== from) for (let i = 0; i < now.length; i += 2) if (now[i] !== from[i] || now[i + 1] !== from[i + 1]) keep(i)
+  if (held >= 0 && held * 2 + 1 < now.length) keep(held * 2)
+  return out
+}
+
 export function freshDoc(settings: Settings): Doc {
   return { settings, points: runJob({ kind: 'generate', settings }).points, handEdited: false, stale: false }
 }
@@ -44,6 +55,8 @@ export function useDesign(initial: () => { doc: Doc; saved: boolean }, onStatus:
   const inFlight = useRef<'generate' | 'relax' | null>(null)
   // A new pattern is wanted. It's made from the settings current when it starts, not when it was asked for.
   const wanted = useRef(false)
+  // The point being dragged, which relax steps leave under the pointer until it's let go.
+  const held = useRef(-1)
   const autoOn = useRef(false)
   const status = useRef(onStatus)
   useEffect(() => { status.current = onStatus }, [onStatus])
@@ -66,7 +79,7 @@ export function useDesign(initial: () => { doc: Doc; saved: boolean }, onStatus:
   }, [])
 
   // Forget the jobs running and the pattern waiting, for Undo, Redo, New, Open and hand edits.
-  const drop = useCallback(() => { token.current++; wanted.current = false }, [])
+  const drop = useCallback(() => { token.current++; wanted.current = false; held.current = -1 }, [])
 
   const stopAuto = useCallback((message?: string) => {
     if (!autoOn.current) return
@@ -83,8 +96,11 @@ export function useDesign(initial: () => { doc: Doc; saved: boolean }, onStatus:
   const autoLoop = useRef(0)
   const autoStep = useRef(false)
   const resume = useRef<() => void>(() => {})
+  // The loop has settled and is waiting for a change.
+  const autoIdle = useRef(false)
   const kickAuto = useCallback(() => {
     if (!autoOn.current) return
+    autoIdle.current = false
     const id = ++autoLoop.current
     const begin = docRef.current
     // Settled once no point moves more than a 2,000th of the typical spacing in a step.
@@ -98,12 +114,16 @@ export function useDesign(initial: () => { doc: Doc; saved: boolean }, onStatus:
       autoStep.current = true
       run({ kind: 'relax', settings: current.settings, points: current.points, steps: 1 }).then(result => {
         if (!autoOn.current || id !== autoLoop.current || mine !== token.current) return
+        // Points dragged by hand while this step ran keep their new place; added or erased ones mean the step
+        // no longer fits, so the next step relaxes the new set.
+        const points = keepEdits(result.points, current.points, docRef.current.points, held.current)
+        if (!points) { window.setTimeout(loop, 0); return }
         steps++
-        apply({ ...docRef.current, points: result.points }, false)
+        apply({ ...docRef.current, points }, false)
         const done = result.maxMove < tolerance ? 'Settled after' : steps >= AUTO_MAX_STEPS ? 'Paused after' : ''
         // Short enough for the status line at 1280 px. The button stays pressed, and the status then ends
         // "· Auto-relax on", to show it's still on. Quiet: these never replace a warning.
-        if (done) { status.current({ text: `${done} ${steps.toLocaleString()} ${steps === 1 ? 'step' : 'steps'}`, quiet: true }); return }
+        if (done) { autoIdle.current = true; status.current({ text: `${done} ${steps.toLocaleString()} ${steps === 1 ? 'step' : 'steps'}`, quiet: true }); return }
         status.current({ text: `Relaxing · step ${steps.toLocaleString()}`, quiet: true })
         window.setTimeout(loop, 16)
       }).catch(() => stopAuto('Auto-relax stopped.'))
@@ -193,17 +213,22 @@ export function useDesign(initial: () => { doc: Doc; saved: boolean }, onStatus:
     kickAuto()
   }, [kickAuto, stopAuto])
 
-  // Hand edits: one undo step per gesture, then live updates while the pointer moves.
+  // Hand edits: one undo step per gesture, then live updates while the pointer moves. Auto-relax keeps
+  // running, so the cells around a dragged point relax as it moves, and the point itself once it's let go.
   const beginEdit = useCallback(() => {
-    stopAuto()
     const pending = inFlight.current === 'generate' || wanted.current
     drop()
     const before = docRef.current
     setHistory(h => record(h, before, null))
     // A new pattern was on its way: the edits keep the old points, so the changed settings wait to be applied.
     if (pending) apply({ ...before, stale: true }, false)
-  }, [apply, drop, stopAuto])
-  const editPoints = useCallback((points: Float64Array) => apply({ ...docRef.current, points, handEdited: true }, false), [apply])
+  }, [apply, drop])
+  const editPoints = useCallback((points: Float64Array, holding = -1) => {
+    held.current = holding
+    apply({ ...docRef.current, points, handEdited: true }, false)
+    if (autoOn.current && autoIdle.current) kickAuto() // settled: the edit starts it relaxing again
+  }, [apply, kickAuto])
+  const releasePoint = useCallback(() => { held.current = -1 }, [])
 
   // Replace the whole design, for New and Open. Undo can still return to the previous one.
   const replace = useCallback((next: Doc, isSaved: boolean) => {
@@ -229,7 +254,7 @@ export function useDesign(initial: () => { doc: Doc; saved: boolean }, onStatus:
   }, [history, drop, stopAuto])
 
   return {
-    doc, change, generate, relaxOnce, toggleAuto, beginEdit, editPoints, replace, undo, redo, stopAuto,
+    doc, change, generate, relaxOnce, toggleAuto, beginEdit, editPoints, releasePoint, replace, undo, redo, stopAuto,
     canUndo: history.past.length > 0, canRedo: history.future.length > 0,
     unsaved: doc !== saved, markSaved: (what: Doc) => setSaved(what),
     busy, auto, capped, spacing,
