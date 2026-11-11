@@ -48,10 +48,10 @@ export function ViewBar({ tool, setTool, s, toggle, zoom, onFit, onZoom }: {
   </div>
 }
 
-export function Dock({ relaxSteps, auto, busy, canRelax, onGenerate, onRelax, onAuto, status, warning, canUndo, canRedo, onUndo, onRedo }: {
+export function Dock({ relaxSteps, auto, busy, canRelax, onGenerate, onRelax, onAuto, status, spoken, warning, canUndo, canRedo, onUndo, onRedo }: {
   relaxSteps: number; auto: boolean; busy: boolean; canRelax: string | false
   onGenerate: () => void; onRelax: () => void; onAuto: () => void
-  status: ReactNode; warning: boolean; canUndo: boolean; canRedo: boolean; onUndo: () => void; onRedo: () => void
+  status: ReactNode; spoken: string; warning: boolean; canUndo: boolean; canRedo: boolean; onUndo: () => void; onRedo: () => void
 }) {
   const steps = Math.max(1, relaxSteps)
   return <div className="dock">
@@ -65,7 +65,9 @@ export function Dock({ relaxSteps, auto, busy, canRelax, onGenerate, onRelax, on
         <Button shortcut="P" pressed={auto} unavailable={canRelax || (!auto && busy && 'Wait for the current update to finish.')} tip={auto ? 'Stop relaxing.' : 'Keep relaxing until you stop it, even as you change settings or move points.'}
           onClick={onAuto}><Icon name={auto ? 'pause' : 'play'} /><span className="compact-label">Auto-relax</span></Button>
       </div>
-      <span className="timeline-status" role="status" data-warning={warning}>{status}</span>
+      {/* Screen readers hear the live region, which leaves out Auto-relax's step counter. */}
+      <span className="timeline-status" aria-hidden="true" data-warning={warning}>{status}</span>
+      <span className="visually-hidden" role="status">{spoken}</span>
       <div className="transport" role="group" aria-label="History">
         <Button className="icon-button" label="Undo" shortcut="⌘Z" unavailable={!canUndo && 'Nothing to undo yet.'} tip="Undo the last change." onClick={onUndo}><Icon name="undo" /></Button>
         <Button className="icon-button" label="Redo" shortcut="⇧⌘Z" unavailable={!canRedo && 'Nothing to redo.'} tip="Redo the change you undid." onClick={onRedo}><Icon name="redo" /></Button>

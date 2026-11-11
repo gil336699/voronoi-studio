@@ -61,6 +61,8 @@ export function poissonDisk(region: Region, spacing: number, tries: number, dens
   const rMin = spacing / Math.sqrt(top), rMax = spacing
   const cell = rMin / Math.SQRT2
   const w = regionWidth(region), h = regionHeight(region)
+  // No spacing means no region to fill. Without this, doubling a zero spacing below would never end.
+  if (!(spacing > 0) || !Number.isFinite(spacing)) return { points: new Float64Array(), capped: false, spacing: 0 }
   const gw = Math.max(1, Math.ceil(w / cell)), gh = Math.max(1, Math.ceil(h / cell))
   if (gw * gh > 40_000_000) return poissonDisk(region, spacing * 2, tries, density, rng, limit) // keeps memory bounded
   const grid = new Int32Array(gw * gh).fill(-1)
@@ -175,7 +177,7 @@ function evenPoints(settings: SeedSettings, count: number, region: Region, rng: 
     spacing *= Math.SQRT2
     best = poissonDisk(region, spacing, tries, settings.density, rng, count * 3)
   }
-  for (let round = 0; round < 4 && best.points.length / 2 < count; round++) {
+  for (let round = 0; round < 4 && best.points.length && best.points.length / 2 < count; round++) {
     spacing *= Math.sqrt((best.points.length / 2) / count) * 0.97
     best = poissonDisk(region, spacing, tries, settings.density, rng, count * 3)
   }

@@ -4,6 +4,8 @@ import { patternRegion } from '../voronoi/pattern'
 import { contains } from '../voronoi/region'
 import { planChange, type Doc } from './changes'
 import { DEFAULTS } from './settings'
+import { shapeFromOutlines } from '../voronoi/shape'
+import type { Polygon } from '../voronoi/geometry'
 
 const doc = (over: Partial<Doc> = {}): Doc => ({ settings: DEFAULTS, points: runJob({ kind: 'generate', settings: DEFAULTS }).points, handEdited: false, stale: false, ...over })
 
@@ -22,6 +24,18 @@ describe('what a settings change does to the points', () => {
     expect(kept.remake).toBe(false)
     expect(Math.max(...kept.next.points.filter((_, i) => i % 2 === 0))).toBeGreaterThan(300)
     expect(planChange(doc({ settings: { ...DEFAULTS, keepPoints: false } }), { width: 400 }).remake).toBe(true)
+  })
+
+  it('makes a pattern when the border is lowered after it left no room, even with Keep points on', () => {
+    // Twenty 2.1 mm strokes: a 1.5 mm border leaves nothing to fill, so the design has no points to keep.
+    const comb = shapeFromOutlines(Array.from({ length: 20 }, (_, k) => [[k * 10, 0], [k * 10 + 2.1, 0], [k * 10 + 2.1, 100], [k * 10, 100]] as Polygon), 'comb.svg')
+    const settings = { ...DEFAULTS, shape: 'custom' as const, customShape: comb, width: 192.1, height: 100, border: 1.5, keepPoints: true }
+    const empty: Doc = { settings, points: new Float64Array(), handEdited: false, stale: false }
+    expect(planChange(empty, { border: 1 }).remake).toBe(true)
+    expect(planChange(empty, { width: 150 }).remake).toBe(true)
+    // With room, Keep points still keeps them.
+    const roomy: Doc = { ...empty, settings: { ...settings, border: 0 }, points: Float64Array.from([1, 50]) }
+    expect(planChange(roomy, { border: 0.5 }).remake).toBe(false)
   })
 
   it('keeps every point inside when the sheet becomes an ellipse', () => {

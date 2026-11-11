@@ -29,7 +29,7 @@ Each push to `main` builds the app and publishes it to GitHub Pages through `.gi
 
 ## Layout
 
-The sheet fills the window, and the controls float above it on translucent glass, in the style of Apple's Liquid Glass. The look follows the system's light or dark appearance, and its Reduce transparency and Increase contrast settings.
+The sheet fills the window, and the controls float above it on translucent glass, in the style of Apple's Liquid Glass. The look follows the system's light or dark appearance, and its Reduce transparency and Increase contrast settings. In Windows contrast themes, buttons, switches and sliders are drawn in the theme's own colours.
 
 - **Top left.** The app name and the **?** button for shortcuts and the quick start.
 - **Left panel.** Four tabs: **Pattern** (cells, placement, gradient, relaxation), **Sheet** (size, units, shape or imported outline, border), **Style** (Lines or Holes, colours) and **File** (project and exports). A dot on Pattern means hand edits are holding back new settings; a dot on File means unsaved changes.
@@ -54,7 +54,7 @@ Narrower windows show tool and action buttons as symbols only. On tablets the sh
 5. **Style.** **Lines** draws each edge once. **Holes** cuts each cell out, leaving a web of material, with rounded corners and a smallest-hole limit.
 6. **Save and export.** **Save** writes an editable `.voronoi.json` project with every point. **Laser SVG** and **DXF** are for cutting; **SVG** and **PNG** are for artwork.
 
-The app asks before New, Open, Generate or Apply settings would replace unsaved work or hand edits, and Undo can bring the previous design back. The current design is also kept in the browser, so it comes back after a reload.
+The app asks before New, Open, Generate or Apply settings would replace unsaved work or hand edits, and Undo can bring the previous design back. The current design is also kept in the browser, so it comes back after a reload or a crash. The copy is updated a moment after each change, at least every 2 seconds while Auto-relax runs, and when the tab closes.
 
 ## Features
 
@@ -77,7 +77,7 @@ Any closed outline in an SVG can be the sheet: a logo, a lamp shade, a pill-shap
 | --- | --- |
 | What's read | Paths, rectangles (rounded too), circles, ellipses and polygons, with their transforms. Curves are flattened to within 0.02 mm. Open lines are left out, and the app says how many. |
 | Holes | Outlines inside other outlines are holes, the way laser software reads nested cut lines. Overlapping outlines cancel where they overlap. |
-| Separate pieces | Every piece gets its share of cells, such as each letter of a logo. Even placement grows outwards from its points, so it starts again in any piece it can't reach. A border shrinks every piece, so thin letters can disappear; use a small or zero border for lettering. |
+| Separate pieces | Every piece gets its share of cells, such as each letter of a logo. Even placement grows outwards from its points, so it starts again in any piece it can't reach. A border shrinks every piece, so thin letters can disappear; use a small or zero border for lettering. If the border leaves nothing, the status and the Sheet tab say so. |
 | Pictures | When Illustrator can't write a shape's look as SVG (a freeform gradient, a mesh or an effect), it saves a picture of the shape trimmed by a clipping mask. A file like that, with no closed outlines of its own, gives the mask's outline instead, placed where the mask is used, and the app says so. A picture with no mask can't be used; the app says how to fix it in Illustrator. |
 | Size | Taken from the file's width and height. A file that doesn't give them is read at 96 units per inch, the web standard, or 72 if it looks like it came from Illustrator. The Sheet tab says when it had to assume, so check the size there. |
 | Resizing | Width and height keep the shape's proportions. Swap is off, since it would stretch the shape. |

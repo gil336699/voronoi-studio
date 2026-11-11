@@ -8,6 +8,7 @@ import { Stage, type StageControls, type Tool } from './components/Stage'
 import { StylePanel } from './components/StylePanel'
 import { TabPanel, Tabs } from './components/Tabs'
 import { TooltipLayer } from './components/Tooltip'
+import { createAutosave, type Autosave } from './lib/autosave'
 import { cutDxf } from './lib/dxfExport'
 import { EXTENSION, parseProject, ProjectError, serializeProject } from './lib/project'
 import { pngProblem, renderPng } from './lib/render'
@@ -96,13 +97,24 @@ export function App() {
   const exactSpacing = useCallback(() => spacingOf(s), [s])
   const count = doc.points.length / 2
 
-  // Keep a copy of the session, a moment after the last change.
+  // Keep a copy of the session: a moment after the last change, at least every 2 s while Auto-relax keeps
+  // changing the points, and at once when the page is hidden or closed.
+  const latest = useRef({ doc, unsaved: design.unsaved })
+  const autosave = useRef<Autosave | null>(null)
   useEffect(() => {
-    const timer = window.setTimeout(() => {
-      storage.set(SESSION_KEY, serializeProject(doc))
-      storage.set(SESSION_UNSAVED_KEY, design.unsaved ? '1' : '0')
-    }, 600)
-    return () => window.clearTimeout(timer)
+    const a = createAutosave(() => {
+      storage.set(SESSION_KEY, serializeProject(latest.current.doc))
+      storage.set(SESSION_UNSAVED_KEY, latest.current.unsaved ? '1' : '0')
+    })
+    autosave.current = a
+    const hidden = () => { if (document.visibilityState === 'hidden') a.flush() }
+    window.addEventListener('pagehide', a.flush)
+    document.addEventListener('visibilitychange', hidden)
+    return () => { a.dispose(); window.removeEventListener('pagehide', a.flush); document.removeEventListener('visibilitychange', hidden) }
+  }, [])
+  useEffect(() => {
+    latest.current = { doc, unsaved: design.unsaved }
+    autosave.current?.changed()
   }, [doc, design.unsaved])
 
   // Asks before discarding unsaved work, in an in-app dialog (embedded browsers can block confirm()).
@@ -259,7 +271,10 @@ export function App() {
   // At 1280 px the status line holds about 220 px, so it keeps to the count and one or two short notes. While
   // Auto-relax runs the seed no longer describes the points, and the panel notes held-back settings.
   const notes = design.auto ? ['Auto-relax on'] : [`seed ${s.seed}`, doc.handEdited ? 'edited' : '']
-  const statusText = status?.text ?? (design.busy ? 'Updating the pattern…'
+  // A border wider than half of every part of an imported shape leaves nowhere for cells.
+  // (Rectangles and ellipses can't run out: their border is capped at a third of the sheet.)
+  const noRoom = geometry.region.shape === 'custom' && !geometry.region.rings?.length
+  const statusText = status?.text ?? (design.busy ? 'Updating the pattern…' : noRoom ? 'No cells fit inside the border.'
     : [`${count.toLocaleString()} cells`, ...notes].filter(Boolean).join(' · '))
 
   return <main className="studio">
@@ -286,7 +301,7 @@ export function App() {
         <PatternPanel s={s} change={design.change} stale={doc.stale} onApply={applySettings} actualCount={count}
           autoSpacingValue={design.spacing || autoSpacingFor(s)} exactSpacing={exactSpacing} capped={design.capped} onShuffle={generateNew} />
       </TabPanel>
-      <TabPanel idBase="design" id="sheet" value={tab}><SheetPanel s={s} change={design.change} onImportShape={importShape} /></TabPanel>
+      <TabPanel idBase="design" id="sheet" value={tab}><SheetPanel s={s} change={design.change} onImportShape={importShape} noRoom={noRoom} /></TabPanel>
       <TabPanel idBase="design" id="style" value={tab}><StylePanel s={s} change={design.change} holes={geometry.metrics.holes} dropped={geometry.metrics.dropped} /></TabPanel>
       <TabPanel idBase="design" id="file" value={tab}>
         <FilePanel s={s} change={design.change} unsaved={design.unsaved} busy={design.busy} openError={openError}
@@ -311,7 +326,7 @@ export function App() {
       </div>
       <Dock relaxSteps={s.relaxSteps} auto={design.auto} busy={design.busy} canRelax={relaxBlocked}
         onGenerate={generateNew} onRelax={design.relaxOnce} onAuto={design.toggleAuto}
-        status={statusText} warning={Boolean(status?.warning)}
+        status={statusText} spoken={status?.spoken ?? statusText} warning={Boolean(status?.warning) || (!status && !design.busy && noRoom)}
         canUndo={design.canUndo} canRedo={design.canRedo} onUndo={design.undo} onRedo={design.redo} />
     </div>
 

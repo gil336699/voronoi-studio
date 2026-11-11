@@ -25,7 +25,7 @@ const ASSUMED = {
 }
 
 // Memoised: the panel only re-renders when its own props change, not on every relax step.
-export const SheetPanel = memo(function SheetPanel({ s, change, onImportShape }: { s: Settings; change: Change; onImportShape: () => void }) {
+export const SheetPanel = memo(function SheetPanel({ s, change, onImportShape, noRoom }: { s: Settings; change: Change; onImportShape: () => void; noRoom: boolean }) {
   const preset = matchPreset(s.width, s.height, s.shape, s.units, s.dpi)
   const [pw, ph] = pixelSize(s.width, s.height, s.dpi)
   const maxBorder = Math.min(s.width, s.height) / 3
@@ -78,6 +78,7 @@ export const SheetPanel = memo(function SheetPanel({ s, change, onImportShape }:
       <LengthField label="Border" mm={Math.min(s.border, maxBorder)} min={0} max={maxBorder} units={s.units} dpi={s.dpi} small
         tip={s.cellStyle === 'holes' ? 'Width of the solid frame between the sheet edge and the holes.' : 'Gap between the sheet edge and the pattern.'}
         onChange={border => change({ border }, 'border')} />
+      {noRoom && <div className="notice" role="status"><p>No cells fit inside this border: every part of the shape is narrower than twice the border. Lower the border to make room.</p></div>}
       <NumberField label="Pixels per inch" value={s.dpi} min={RANGES.dpi[0]} max={RANGES.dpi[1]} suffix="ppi"
         tip="Resolution for pixel sizes and PNG export. 300 suits print; 72–144 suits screens." onChange={dpi => change({ dpi: Math.round(dpi) }, 'dpi')} />
       <SwitchField label="Keep points when the sheet changes" checked={s.keepPoints}

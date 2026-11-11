@@ -86,6 +86,15 @@ describe('custom sheet shapes', () => {
     }
   })
 
+  it('fills strips thinner than its sampling, such as strokes left by a border, without running away', () => {
+    // 0.01–0.1 mm strips once the 1 mm border is taken off: too thin for the area estimate to see.
+    for (const w of [2.01, 2.1]) {
+      const comb = shapeFromOutlines(Array.from({ length: 20 }, (_, k) => [[k * 25, 0], [k * 25 + w, 0], [k * 25 + w, 200], [k * 25, 200]] as Polygon), 'comb.svg')
+      const region = patternRegion({ ...settings, width: 475 + w, height: 200, customShape: comb, border: 1 })
+      expect(seedPoints(seed({ count: 300 }), region).points.length / 2).toBe(300)
+    }
+  })
+
   it('gives the full count even with a single try per point', () => {
     for (const region of [patternRegion(settings), sheetRegion(200, 200, 'rect')]) {
       expect(seedPoints(seed({ tries: 1, count: 369 }), region).points.length / 2).toBe(369)

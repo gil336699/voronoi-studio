@@ -1,5 +1,13 @@
 # Voronoi Studio Changelog
 
+## 1.4.1 2026-11-10
+
+- Fixed: while Auto-relax ran, the copy of the design kept in the browser wasn't updated, so a reload or a crash brought back the design from before Auto-relax started. In testing, a reload lost a new cell count and an added cell. The copy is now updated at least every 2 seconds while the points move, and when the tab closes or is hidden.
+- Fixed: screen readers were sent every Auto-relax step, about 50 updates a second at 1,500 cells. They now hear "Relaxing…" once and then "Settled after N steps". The step count still shows on screen.
+- Fixed: Even placement could hang and fail with "Maximum call stack size exceeded" on an imported shape whose parts, after the border, were thinner than about a millimetre. An example is Line Growth's output with a 1 mm border, or lettering strokes 2.1 mm wide with a 1 mm border. The spacing estimate missed such thin strips and came out as zero. These shapes now get the full count. Every other pattern is unchanged: 270 of 270 test configurations give the same points.
+- When the border leaves no room at all, the status says "No cells fit inside the border." and the Sheet tab explains why. Before, the sheet just showed 0 cells. This happens, for example, with Line Growth's output and the default 5 mm border. Lowering the border then makes a pattern, even with Keep points on. Before, it stayed at 0 cells until you pressed Generate.
+- Windows contrast themes: pressed buttons, the chosen tab and option, switches and slider tracks used to vanish. They're now drawn in the theme's colours.
+
 ## 1.4.0 2026-11-10
 
 - **Auto-relax keeps running while you edit points by hand.** Drag a point and the cells around it relax as it moves. The point stays under the pointer until you let go, then it relaxes too. Adding or erasing cells keeps it running as well, and a settled pattern starts relaxing again when you edit it. Only Stop, Undo, Redo, New and Open turn it off now.

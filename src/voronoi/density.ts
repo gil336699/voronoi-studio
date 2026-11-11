@@ -1,6 +1,6 @@
 // Density gradients: where cells should be smaller. Density runs from 1 (largest cells) up to the
 // strength (cells that many times smaller in area). It changes geometrically, so cell sizes step evenly.
-import { regionCenter, regionHeight, regionWidth, type Region } from './region'
+import { regionArea, regionCenter, regionHeight, regionWidth, type Region } from './region'
 
 export type DensityMode = 'none' | 'linear' | 'radial'
 export type DensitySettings = { mode: DensityMode; strength: number; angle: number; invert: boolean }
@@ -38,12 +38,17 @@ export function densityField(settings: DensitySettings, region: Region): Density
 export function integrateDensity(field: DensityField, region: Region, contains: (x: number, y: number) => boolean, samples = 64): number {
   const w = regionWidth(region), h = regionHeight(region)
   const dx = w / samples, dy = h / samples
-  let sum = 0
+  let sum = 0, all = 0
   for (let j = 0; j < samples; j++) {
     for (let i = 0; i < samples; i++) {
       const x = region.x0 + (i + 0.5) * dx, y = region.y0 + (j + 0.5) * dy
-      if (contains(x, y)) sum += field(x, y)
+      const d = field(x, y)
+      all += d
+      if (contains(x, y)) sum += d
     }
   }
-  return sum * dx * dy
+  if (sum > 0) return sum * dx * dy
+  // Strokes thinner than the sample spacing can miss every sample. Then use the exact area, at the field's
+  // average density, so a thin shape still gets a spacing instead of zero.
+  return regionArea(region) * (all / (samples * samples))
 }

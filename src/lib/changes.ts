@@ -37,7 +37,10 @@ export function planChange(prev: Doc, patch: Partial<Settings>): { next: Doc; re
   const sheetChanged = changed(SHEET_KEYS)
   const from = patternRegion(prev.settings), to = patternRegion(settings)
   let stale = prev.stale, remake = false
-  if (seedChanged || (sheetChanged && !settings.keepPoints)) {
+  // Points can only be kept from a pattern area that had room for them: after a border that left none,
+  // a sheet change makes a pattern.
+  const keep = settings.keepPoints && !(from.shape === 'custom' && !from.rings?.length)
+  if (seedChanged || (sheetChanged && !keep)) {
     if (prev.handEdited) stale = true
     else remake = true
   }

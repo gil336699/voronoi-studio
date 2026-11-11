@@ -11,8 +11,9 @@ import { PatternClient } from './worker/patternClient'
 // relax points. The rules for what a settings change does to the points are in lib/changes.ts.
 
 export type { Doc }
-// quiet: a routine Auto-relax message, which never replaces a warning that's showing.
-export type Status = { text: string; warning?: boolean; quiet?: boolean } | null
+// quiet: a routine Auto-relax message, which never replaces a warning that's showing. spoken: what screen
+// readers hear instead of the text, so a step counter isn't read out many times a second.
+export type Status = { text: string; warning?: boolean; quiet?: boolean; spoken?: string } | null
 
 const AUTO_MAX_STEPS = 3000
 
@@ -124,7 +125,7 @@ export function useDesign(initial: () => { doc: Doc; saved: boolean }, onStatus:
         // Short enough for the status line at 1280 px. The button stays pressed, and the status then ends
         // "· Auto-relax on", to show it's still on. Quiet: these never replace a warning.
         if (done) { autoIdle.current = true; status.current({ text: `${done} ${steps.toLocaleString()} ${steps === 1 ? 'step' : 'steps'}`, quiet: true }); return }
-        status.current({ text: `Relaxing · step ${steps.toLocaleString()}`, quiet: true })
+        status.current({ text: `Relaxing · step ${steps.toLocaleString()}`, quiet: true, spoken: 'Relaxing…' })
         window.setTimeout(loop, 16)
       }).catch(() => stopAuto('Auto-relax stopped.'))
         .finally(() => {
