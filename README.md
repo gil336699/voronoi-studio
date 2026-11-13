@@ -116,7 +116,9 @@ Photoshop files and PDFs aren't read; the app says to export a JPG or PNG. Trans
 | Small cells at | Dark parts get the small cells, like ink, or light parts do. |
 | Contrast | Spreads the mid-greys apart (up to +100 %) or brings them together (down to −100 %). The darkest and lightest parts are always stretched to black and white first. |
 | Softness | Blurs the picture by about this distance first: softens hard edges, and turns a line drawing into cells that shrink near its lines. |
-| Picture size | **Fit** shows the whole picture, centred; **Fill** covers the sheet, cutting off what doesn't fit. |
+| Picture size | **Fit** starts from the whole picture, centred; **Fill** starts from the picture covering the sheet, cutting off what doesn't fit. |
+| Scale | Resizes the picture about its centre, from 10 to 400 % of the Fit or Fill size. Around a smaller picture counts as white paper. |
+| Move right, Move down | Moves the picture's centre from the sheet's centre, in the sheet's units (negative moves it left or up). **Reset size and position** goes back to 100 % and centred. |
 
 The picture is kept in the project at up to 512 × 512 pixels in grey, about 260 kB, so a project opens with the same picture and the same pattern anywhere. Pattern settings, including the picture, wait for **Apply settings…** after hand edits, like the other gradients.
 
@@ -124,7 +126,7 @@ What to expect: a cut sheet has to be covered with cells, so white gets the larg
 
 ### Stretch
 
-**Stretch** makes cells longer in one direction, like wood grain, bone or a dragonfly wing. Each point measures distance with the same ellipse instead of a circle, so at 3× relaxed cells are about three times as long as they are wide, along **Direction** (0° is right, 90° is up). Edges stay straight, so holes, rounded corners and cut files work as before. It works with every placement (a stretched honeycomb with Hex), every gradient including Picture, and imported shapes.
+**Stretch** makes cells longer in one direction, like wood grain, bone or a dragonfly wing. Each point measures distance with the same ellipse instead of a circle, so at 3× relaxed cells are about three times as long as they are wide, along **Stretch direction** (0° is right, 90° is up). Edges stay straight, so holes, rounded corners and cut files work as before. It works with every placement (a stretched honeycomb with Hex), every gradient including Picture, and imported shapes.
 
 Long cells leave long, thin webs between them, so a stretched panel is stiffer along the stretch than across it, and thin webs can break; in Holes style, check the narrowest hole in the measurements. With Stretch on, **Minimum spacing** is the spacing before stretching: points end up farther apart along the stretch and closer across it.
 
@@ -161,8 +163,8 @@ Every export holds what the view shows: the **Sites**, **Edges** or **Holes**, a
 | Line width, colours, fill | Appearance in the preview, PNG and artwork SVG. Laser files always use hairlines. |
 | Include the sheet outline | Adds the sheet edge as the outer cut in Laser SVG and DXF. |
 | Gradient, Strength, Direction, Small cells at | The density gradient: None, Linear, Radial or Picture, how strong it is and which way it runs. |
-| Choose picture…, Replace…, Contrast, Softness, Picture size | The Picture gradient's picture and how it's read (see Picture gradient above). |
-| Stretch, Direction | How many times longer than wide cells are (Off, or 1.1–5×), and which way (0° is right, 90° is up). |
+| Choose picture…, Replace…, Contrast, Softness, Picture size, Scale, Move right, Move down | The Picture gradient's picture, how it's read, and its size and place on the sheet (see Picture gradient above). |
+| Stretch, Stretch direction | How many times longer than wide cells are (Off, or 1.1–5×), and which way (0° is right, 90° is up). |
 | Sites, Edges or Holes, Delaunay, Picture | Show or hide each part of the design, in the view and in every export (the picture stays out of cut files). |
 
 ## Keyboard shortcuts
@@ -235,6 +237,17 @@ Stretch, measured the same way (Lines, Auto-relax steps per second):
 | 10,000 | 37.5 | 34.4 | 24.2 |
 
 A stretch at an angle off the axes is slower at high counts, because the cells along the sheet's edge are clipped more carefully. On Line Growth's 2.5 MB outline, each new stretch takes 1–3.3 s to make its pattern.
+
+Stretch, measured the same way:
+
+| Task | Result |
+| --- | --- |
+| Auto-relax speed, Lines, 2,500 cells | no stretch 50.9, 3× at 0° 50.2, 3× at 30° 46.6 steps/s |
+| Auto-relax speed, Lines, 10,000 cells | no stretch 37.7, 3× at 0° 34.4, 3× at 30° 24.0 steps/s |
+| Line Growth's 2.5 MB outline, 1,000 cells | a new pattern 1.0–3.3 s after a stretch change; 2.2 steps/s, as without a stretch |
+| Relaxed cell shape, 3× at 30° | 3.03 times as long as wide, along 30.0° |
+
+Directions off the axes are slower at high counts because the cells along the border are trimmed as if the sheet were an imported outline.
 
 Patterns up to a few thousand cells stay smooth. With Auto-relax on while you drag the Cells slider, it kept relaxing at 45 steps/s with nearly 3,900 cells (production build, headless Chrome). At 10,000 cells, editing by hand and auto-relaxing are slow; set the relax steps and press Relax instead.
 

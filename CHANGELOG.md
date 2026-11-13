@@ -2,9 +2,11 @@
 
 ## 1.6.0 2026-11-13
 
-- **Stretch.** A new Stretch section on the Pattern tab makes cells longer in one direction, like wood grain or a dragonfly wing. Set how many times longer than wide (up to 5×) and the direction. Each point measures distance with the same ellipse instead of a circle, so edges stay straight, and holes, rounded corners and cut files work as before. In testing, 3× along 30° gave relaxed cells 3.03 times as long as wide, along 30.0°.
+- **Stretch.** A new Stretch section on the Pattern tab makes cells longer in one direction, like wood grain or a dragonfly wing. Set how many times longer than wide (up to 5×) and the stretch direction. Each point measures distance with the same ellipse instead of a circle, so edges stay straight, and holes, rounded corners and cut files work as before. In testing, 3× along 30° gave relaxed cells 3.03 times as long as wide, along 30.0°.
 - Stretch works with every placement (Hex makes a stretched honeycomb), every gradient including Picture, Auto-relax and imported shapes. Erasing picks the cell under the pointer, measured with the same ellipse.
+- **Picture size and position.** The Picture gradient's picture can now be scaled from 10 to 400 % of its Fit or Fill size and moved anywhere on the sheet with **Move right** and **Move down**, in the sheet's units. **Reset size and position** puts it back. Before, it could only fit or fill the sheet, centred.
 - Fixed: ⌘Z, ⌘S and the other shortcuts did nothing straight after moving a slider or a switch, until you clicked somewhere else. Sliders and switches no longer count as typing.
+- Fixed: after scrolling a panel, the control under the pointer showed no tooltip until you moved to another control. Now its tooltip appears once scrolling stops.
 - Projects are now version 4; older projects open as before, without a stretch. Patterns without a stretch are unchanged: 270 of 270 test configurations give the same points as 1.5.0.
 
 ## 1.5.0 2026-11-13

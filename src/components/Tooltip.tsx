@@ -24,6 +24,8 @@ export function TooltipLayer() {
     let previousDescribedBy: string | null = null
     let timer = 0
     let warmUntil = 0
+    // Where the pointer last was, so a tooltip can follow content that scrolls under a still pointer.
+    let lastX = -1, lastY = -1, lastType = 'mouse', settle = 0
     let mode: 'hover' | 'focus' = 'hover'
 
     const unlink = () => {
@@ -68,7 +70,9 @@ export function TooltipLayer() {
     const tipOf = (target: EventTarget | null) =>
       target instanceof Element ? target.closest<HTMLElement>('[data-tip]') : null
 
+    const onMove = (event: PointerEvent) => { lastX = event.clientX; lastY = event.clientY; lastType = event.pointerType }
     const onOver = (event: PointerEvent) => {
+      onMove(event)
       // No tooltips for touch, or while dragging a slider or brushing.
       if (event.pointerType === 'touch' || event.buttons !== 0) return
       const element = tipOf(event.target)
@@ -80,7 +84,19 @@ export function TooltipLayer() {
       const delay = Date.now() < warmUntil ? 0 : SHOW_DELAY
       timer = window.setTimeout(() => show(element, element, 'hover'), delay)
     }
-    const onOut = (event: PointerEvent) => { if (!event.relatedTarget) hide() }
+    const onOut = (event: PointerEvent) => { if (!event.relatedTarget) { hide(); lastX = -1 } }
+    // Scrolling hides the tooltip. Once it stops, the control now under the pointer gets its tooltip, as if the
+    // pointer had moved onto it: the scroll event can arrive after the pointer reached the control, and
+    // scrolling a panel with the wheel moves controls under a pointer that never moves.
+    const onScroll = () => {
+      hide()
+      window.clearTimeout(settle)
+      settle = window.setTimeout(() => {
+        if (lastX < 0 || lastType === 'touch') return
+        const element = tipOf(document.elementFromPoint(lastX, lastY))
+        if (element && element !== anchor) timer = window.setTimeout(() => show(element, element, 'hover'), SHOW_DELAY)
+      }, 150)
+    }
     const onFocus = (event: FocusEvent) => {
       const target = event.target instanceof HTMLElement ? event.target : null
       if (!target || !target.matches(':focus-visible')) return
@@ -92,23 +108,26 @@ export function TooltipLayer() {
     const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') hide() }
 
     document.addEventListener('pointerover', onOver)
+    document.addEventListener('pointermove', onMove, { passive: true })
     document.addEventListener('pointerout', onOut)
     document.addEventListener('pointerdown', hide, true)
     document.addEventListener('focusin', onFocus)
     document.addEventListener('focusout', onBlur)
     document.addEventListener('keydown', onKey, true)
-    document.addEventListener('scroll', hide, true)
+    document.addEventListener('scroll', onScroll, true)
     window.addEventListener('blur', hide)
     window.addEventListener('resize', hide)
     return () => {
       hide()
+      window.clearTimeout(settle)
       document.removeEventListener('pointerover', onOver)
+      document.removeEventListener('pointermove', onMove)
       document.removeEventListener('pointerout', onOut)
       document.removeEventListener('pointerdown', hide, true)
       document.removeEventListener('focusin', onFocus)
       document.removeEventListener('focusout', onBlur)
       document.removeEventListener('keydown', onKey, true)
-      document.removeEventListener('scroll', hide, true)
+      document.removeEventListener('scroll', onScroll, true)
       window.removeEventListener('blur', hide)
       window.removeEventListener('resize', hide)
       tip.remove()

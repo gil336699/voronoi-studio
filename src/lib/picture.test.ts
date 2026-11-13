@@ -24,7 +24,7 @@ const bytes = (...values: (number | string)[]) => {
 
 describe('density pictures', () => {
   it('saves the picture in the project file and opens it again', () => {
-    const settings = withPicture({ pictureFit: 'fill', pictureContrast: 35, pictureSoftness: 2.5, pictureInvert: true })
+    const settings = withPicture({ pictureFit: 'fill', pictureContrast: 35, pictureSoftness: 2.5, pictureInvert: true, pictureScale: 75, pictureX: 14.5, pictureY: -6 })
     const points = seedPoints(seedSettings(settings), patternRegion(settings)).points
     const text = serializeProject({ settings, points, handEdited: false })
     expect(JSON.parse(text).version).toBe(VERSION)
@@ -39,11 +39,12 @@ describe('density pictures', () => {
     expect(s.densityPicture).toBeNull()
     expect(s.density).toBe('none')
     expect(sanitizeSettings({ density: 'picture', pictureFit: 'tile', pictureContrast: 500 })).toMatchObject({ density: 'none', pictureFit: 'fit', pictureContrast: 100 })
+    expect(sanitizeSettings({ pictureScale: 1000, pictureX: -9000 })).toMatchObject({ pictureScale: 400, pictureX: -5000, pictureY: 0 })
   })
 
   it('makes a new pattern when the picture or its settings change', () => {
     const doc = { settings: withPicture(), points: new Float64Array(4), handEdited: false, stale: false }
-    for (const patch of [{ densityPicture: picture(20, 20) }, { pictureContrast: 20 }, { pictureSoftness: 3 }, { pictureFit: 'fill' as const }, { pictureInvert: true }]) {
+    for (const patch of [{ densityPicture: picture(20, 20) }, { pictureContrast: 20 }, { pictureSoftness: 3 }, { pictureFit: 'fill' as const }, { pictureInvert: true }, { pictureScale: 60 }, { pictureX: 12 }, { pictureY: -8 }]) {
       expect(planChange(doc, patch).remake).toBe(true)
     }
     expect(planChange(doc, { showPicture: false }).remake).toBe(false)

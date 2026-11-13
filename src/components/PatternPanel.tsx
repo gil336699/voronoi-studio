@@ -28,8 +28,8 @@ const DENSITIES: Option<DensityMode>[] = [
   { value: 'picture', label: 'Picture', tip: `Cells get smaller where a picture is dark, or where it’s light. Use a ${PICTURE_TYPES} file.` },
 ]
 const FITS: Option<PictureFit>[] = [
-  { value: 'fit', label: 'Fit', tip: 'Show the whole picture, centred. Around it counts as white paper.' },
-  { value: 'fill', label: 'Fill', tip: 'Cover the whole sheet, centred, cutting off what doesn’t fit.' },
+  { value: 'fit', label: 'Fit', tip: 'Start from the whole picture fitted inside the sheet. Around it counts as white paper.' },
+  { value: 'fill', label: 'Fill', tip: 'Start from the picture covering the whole sheet, cutting off what doesn’t fit.' },
 ]
 const size = (w: number, h: number) => `${w.toLocaleString()} × ${h.toLocaleString()} px`
 
@@ -120,6 +120,17 @@ export const PatternPanel = memo(function PatternPanel({ s, change, stale, onApp
             tip="Blur the picture by about this distance first. Softens hard edges, and turns line drawings into cells that shrink near the lines."
             onChange={pictureSoftness => change({ pictureSoftness }, 'pictureSoftness')} />
           <Segmented label="Picture size" options={FITS} value={s.pictureFit} onChange={pictureFit => change({ pictureFit }, 'pictureFit')} />
+          <SliderField label="Scale" value={s.pictureScale} min={RANGES.pictureScale[0]} max={RANGES.pictureScale[1]} step={5} format={v => `${v} %`}
+            tip="Make the picture smaller or larger, about its centre. 100 % is the Fit or Fill size; around the picture counts as white paper."
+            onChange={pictureScale => change({ pictureScale }, 'pictureScale')} />
+          <div className="pair two">
+            <LengthField label="Move right" mm={s.pictureX} min={-s.width} max={s.width} units={s.units} dpi={s.dpi} small compact
+              tip="Move the picture right from the centre of the sheet, or left below zero." onChange={pictureX => change({ pictureX }, 'pictureX')} />
+            <LengthField label="Move down" mm={s.pictureY} min={-s.height} max={s.height} units={s.units} dpi={s.dpi} small compact
+              tip="Move the picture down from the centre of the sheet, or up below zero." onChange={pictureY => change({ pictureY }, 'pictureY')} />
+          </div>
+          {(s.pictureScale !== 100 || s.pictureX !== 0 || s.pictureY !== 0) && <Button className="wide" tip="Back to 100 % and centred on the sheet."
+            onClick={() => change({ pictureScale: 100, pictureX: 0, pictureY: 0 }, 'pictureReset')}>Reset size and position</Button>}
         </>}
       </>}
     </Section>
@@ -128,7 +139,7 @@ export const PatternPanel = memo(function PatternPanel({ s, change, stale, onApp
       <SliderField label="Stretch" value={s.stretch} min={RANGES.stretch[0]} max={RANGES.stretch[1]} step={0.1}
         format={v => (v <= 1 ? 'Off' : `${v.toFixed(1)}×`)} tip="Make cells longer in one direction, like wood grain or a dragonfly wing. At 2× relaxed cells are about twice as long as they are wide."
         onChange={stretch => change({ stretch: Math.round(stretch * 10) / 10 }, 'stretch')} />
-      <SliderField label="Direction" value={s.stretchAngle} min={0} max={175} step={5} format={v => `${v}°`}
+      <SliderField label="Stretch direction" value={s.stretchAngle} min={0} max={175} step={5} format={v => `${v}°`}
         unavailable={s.stretch <= 1 && 'Turn Stretch up from Off first.'}
         tip="The direction cells get longer in. 0° is right, 90° is up." onChange={stretchAngle => change({ stretchAngle }, 'stretchAngle')} />
       {s.stretch > 1 && <p className="hint">Each point measures distance with an ellipse instead of a circle, so cells stay straight-edged but grow longer along {s.stretchAngle}°. Long cells leave long, thin webs between them: in Holes style, check the narrowest hole.</p>}

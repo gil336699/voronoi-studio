@@ -18,6 +18,8 @@ export type Settings = {
   density: DensityMode; densityStrength: number; densityAngle: number; densityInvert: boolean
   // The picture for the Picture gradient, kept when switching to another gradient and back.
   densityPicture: DensityPicture | null; pictureFit: PictureFit; pictureContrast: number; pictureSoftness: number; pictureInvert: boolean
+  // The picture's size as a percentage of Fit or Fill, and how far its centre is moved right and down, in mm.
+  pictureScale: number; pictureX: number; pictureY: number
   // Stretch: how many times longer than wide cells are (1 is off), and the long direction in degrees.
   stretch: number; stretchAngle: number
   relaxSteps: number
@@ -34,6 +36,7 @@ export const DEFAULTS: Settings = {
   count: 300, placement: 'even', autoSpacing: true, spacing: 10, tries: 30, jitter: 0.3, seed: 1,
   density: 'none', densityStrength: 4, densityAngle: 0, densityInvert: false,
   densityPicture: null, pictureFit: 'fit', pictureContrast: 0, pictureSoftness: 0, pictureInvert: false,
+  pictureScale: 100, pictureX: 0, pictureY: 0,
   stretch: 1, stretchAngle: 0,
   relaxSteps: 3,
   cellStyle: 'lines', web: 2, cornerRadius: 1, minHole: 0.5,
@@ -47,7 +50,7 @@ type NumericKey = { [K in keyof Settings]: Settings[K] extends number ? K : neve
 export const RANGES: Record<NumericKey, [number, number]> = {
   width: [5, 5000], height: [5, 5000], dpi: [36, 1200], border: [0, 500],
   count: [2, 10_000], spacing: [0.05, 1000], tries: [1, 100], jitter: [0, 1], seed: [0, 999_999],
-  densityStrength: [1, 20], densityAngle: [0, 360], pictureContrast: [-100, 100], pictureSoftness: [0, 100], stretch: [1, 5], stretchAngle: [0, 180], relaxSteps: [0, 50],
+  densityStrength: [1, 20], densityAngle: [0, 360], pictureContrast: [-100, 100], pictureSoftness: [0, 100], pictureScale: [10, 400], pictureX: [-5000, 5000], pictureY: [-5000, 5000], stretch: [1, 5], stretchAngle: [0, 180], relaxSteps: [0, 50],
   web: [0, 100], cornerRadius: [0, 100], minHole: [0, 200], lineWidth: [0.005, 20],
 }
 
@@ -59,7 +62,7 @@ const CHOICES = {
 // Settings that decide where points go. Changing one makes a new pattern (unless points were edited).
 export const SEED_KEYS: (keyof Settings)[] = ['count', 'placement', 'autoSpacing', 'spacing', 'tries', 'jitter', 'seed',
   'density', 'densityStrength', 'densityAngle', 'densityInvert',
-  'densityPicture', 'pictureFit', 'pictureContrast', 'pictureSoftness', 'pictureInvert', 'stretch', 'stretchAngle', 'relaxSteps']
+  'densityPicture', 'pictureFit', 'pictureContrast', 'pictureSoftness', 'pictureInvert', 'pictureScale', 'pictureX', 'pictureY', 'stretch', 'stretchAngle', 'relaxSteps']
 // Settings that move the region points live in. With "Keep points" on, points follow the sheet instead.
 export const SHEET_KEYS: (keyof Settings)[] = ['width', 'height', 'shape', 'border', 'customShape']
 
@@ -94,7 +97,7 @@ export function sanitizeSettings(raw: unknown): Settings {
 export function densitySettings(s: Settings): DensitySettings {
   const picture = s.density === 'picture' && s.densityPicture ? {
     picture: s.densityPicture, fit: s.pictureFit, contrast: s.pictureContrast, softness: s.pictureSoftness, invert: s.pictureInvert,
-    sheetWidth: s.width, sheetHeight: s.height,
+    sheetWidth: s.width, sheetHeight: s.height, scale: s.pictureScale, offsetX: s.pictureX, offsetY: s.pictureY,
   } : null
   return { mode: s.density, strength: s.densityStrength, angle: s.densityAngle, invert: s.densityInvert, picture }
 }

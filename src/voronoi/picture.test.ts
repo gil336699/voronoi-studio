@@ -67,6 +67,18 @@ describe('picture density', () => {
     expect(picturePlacement(settings(p, { fit: 'fill', sheetWidth: 100, sheetHeight: 100 }))).toEqual({ k: 1, ox: -50, oy: 0 })
   })
 
+  it('scales the picture about its centre and moves it, with paper around it', () => {
+    const p = picture(200, 100, () => 0)
+    expect(picturePlacement(settings(p, { scale: 50 }))).toEqual({ k: 0.25, ox: 25, oy: 37.5 })
+    expect(picturePlacement(settings(p, { scale: 50, offsetX: 10, offsetY: -5 }))).toEqual({ k: 0.25, ox: 35, oy: 32.5 })
+    expect(picturePlacement(settings(p, { fit: 'fill', scale: 200 }))).toEqual({ k: 2, ox: -150, oy: -50 })
+    // A black picture at half size, moved right: black inside it, white paper where it used to reach.
+    const g = pictureGrid(settings(p, { scale: 50, offsetX: 20 }), 5)
+    expect(pictureDensityAt(g, 70, 50)).toBeCloseTo(5)
+    expect(pictureDensityAt(g, 30, 50)).toBeCloseTo(1)
+    expect(pictureDensityAt(g, 70, 30)).toBeCloseTo(1) // above the half-height picture
+  })
+
   it('makes the darkest pixel the full strength and white paper 1, or the reverse when inverted', () => {
     const p = picture(4, 1, i => [60, 100, 140, 180][i])
     const g = pictureGrid(settings(p, { sheetWidth: 4, sheetHeight: 4 }), 9)

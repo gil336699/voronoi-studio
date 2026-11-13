@@ -10,10 +10,13 @@ export type PictureFit = 'fit' | 'fill'
 // gray: one byte a pixel, row by row from the top left, 0 black to 255 white, as base64. Transparent parts
 // were laid on white. sourceWidth and sourceHeight are the original file's pixel size, for the readout.
 export type DensityPicture = { name: string; width: number; height: number; gray: string; sourceWidth: number; sourceHeight: number }
-// contrast: -100 to 100 %. softness: blur in mm. invert: light parts get the small cells.
+// contrast: -100 to 100 %. softness: blur in mm. invert: light parts get the small cells. scale: size as a
+// percentage of the Fit or Fill size (100 if missing). offsetX, offsetY: how far the picture's centre sits right
+// of and below the sheet's centre, in mm.
 export type PictureSettings = {
   picture: DensityPicture; fit: PictureFit; contrast: number; softness: number; invert: boolean
   sheetWidth: number; sheetHeight: number
+  scale?: number; offsetX?: number; offsetY?: number
 }
 
 // Tones run from 0 (the largest cells) to 1 (the smallest) after levels, contrast, inverting and softness.
@@ -60,12 +63,14 @@ export function sanitizePicture(raw: unknown): DensityPicture | null {
 }
 
 // Where the picture sits: Fit shows all of it, centred, with white paper around it; Fill covers the sheet,
-// centred, cutting off what overhangs. Pixels stay square.
+// centred, cutting off what overhangs. Scale then resizes it about its centre, and the offsets move it.
+// Pixels stay square.
 export function picturePlacement(p: PictureSettings): { k: number; ox: number; oy: number } {
   const { width: cols, height: rows } = p.picture
   const kx = p.sheetWidth / cols, ky = p.sheetHeight / rows
-  const k = Math.max(1e-9, p.fit === 'fill' ? Math.max(kx, ky) : Math.min(kx, ky))
-  return { k, ox: (p.sheetWidth - cols * k) / 2, oy: (p.sheetHeight - rows * k) / 2 }
+  const scale = Math.max(1e-3, (p.scale ?? 100) / 100)
+  const k = Math.max(1e-9, (p.fit === 'fill' ? Math.max(kx, ky) : Math.min(kx, ky)) * scale)
+  return { k, ox: (p.sheetWidth - cols * k) / 2 + (p.offsetX ?? 0), oy: (p.sheetHeight - rows * k) / 2 + (p.offsetY ?? 0) }
 }
 
 // Radii of three box blurs that together approximate a Gaussian blur of this sigma (in pixels).
@@ -153,7 +158,7 @@ let tonesCache: { key: string; gray: string; tones: PictureTones } | null = null
 let gridCache: { tones: PictureTones; strength: number; grid: PictureGrid } | null = null
 
 export function pictureTones(p: PictureSettings): PictureTones {
-  const key = [p.picture.width, p.picture.height, p.fit, p.contrast, p.softness, p.invert, p.sheetWidth, p.sheetHeight].join('|')
+  const key = [p.picture.width, p.picture.height, p.fit, p.contrast, p.softness, p.invert, p.sheetWidth, p.sheetHeight, p.scale ?? 100, p.offsetX ?? 0, p.offsetY ?? 0].join('|')
   if (tonesCache && tonesCache.key === key && tonesCache.gray === p.picture.gray) return tonesCache.tones
   const tones = makeTones(p)
   tonesCache = { key, gray: p.picture.gray, tones }
