@@ -1,6 +1,6 @@
 # Voronoi Studio
 
-Voronoi Studio is a browser app for designing Voronoi patterns to make things with. Pick a sheet size and shape, or import your own outline from an SVG, choose how many cells and how they're placed, shape them with gradients (including one from your own photo or drawing) and relaxation, and drag, add or erase cells by hand. Then export them at real size: a laser-ready SVG or a DXF for cutting, or an SVG or PNG for artwork. It rebuilds and extends Gil's Voronoi Lab.
+Voronoi Studio is a browser app for designing Voronoi patterns to make things with. Pick a sheet size and shape, or import your own outline from an SVG, choose how many cells and how they're placed, shape them with gradients (including one from your own photo or drawing), stretch them into long cells, and relax them, and drag, add or erase cells by hand. Then export them at real size: a laser-ready SVG or a DXF for cutting, or an SVG or PNG for artwork. It rebuilds and extends Gil's Voronoi Lab.
 
 **Use it online:** https://gil336699.github.io/voronoi-studio/
 
@@ -32,7 +32,7 @@ Each push to `main` builds the app and publishes it to GitHub Pages through `.gi
 The sheet fills the window, and the controls float above it on translucent glass, in the style of Apple's Liquid Glass. The look follows the system's light or dark appearance, and its Reduce transparency and Increase contrast settings. In Windows contrast themes, buttons, switches and sliders are drawn in the theme's own colours.
 
 - **Top left.** The app name and the **?** button for shortcuts and the quick start.
-- **Left panel.** Four tabs: **Pattern** (cells, placement, gradient, relaxation), **Sheet** (size, units, shape or imported outline, border), **Style** (Lines or Holes, colours) and **File** (project and exports). A dot on Pattern means hand edits are holding back new settings; a dot on File means unsaved changes.
+- **Left panel.** Four tabs: **Pattern** (cells, placement, gradient, stretch, relaxation), **Sheet** (size, units, shape or imported outline, border), **Style** (Lines or Holes, colours) and **File** (project and exports). A dot on Pattern means hand edits are holding back new settings; a dot on File means unsaved changes.
 - **Above the sheet.** Tools (Move, Add, Erase, Pan) on the left. Sites, Edges or Holes, Delaunay, Picture (with a Picture gradient), and zoom on the right. A caption explains the current tool.
 - **Below the sheet.** The action dock: **Generate**, **Relax**, **Auto-relax**, the status, and Undo and Redo.
 - **Right panel.** **Measurements**: sheet size, cells, holes, average cell size, evenness, the narrowest hole or shortest edge, and total cut length.
@@ -48,7 +48,7 @@ Narrower windows show tool and action buttons as symbols only. On tablets the sh
 ## Workflow
 
 1. **Sheet.** Choose a preset such as a 200 mm tile, A4, a 12 × 12 in laser sheet or a Ø 100 mm coaster, or type a size. Choose Rectangle or Ellipse and a border. Or press **Import SVG shape…**, or drop an SVG on the window, to fill your own outline; outlines inside it become holes.
-2. **Pattern.** Set the number of cells and the placement. Add a density gradient for cells that get smaller toward one side, the centre or the edge, or where a picture of yours is dark: choose **Picture**, or drop a photo on the window.
+2. **Pattern.** Set the number of cells and the placement. Add a density gradient for cells that get smaller toward one side, the centre or the edge, or where a picture of yours is dark: choose **Picture**, or drop a photo on the window. Turn up **Stretch** for cells that grow longer in one direction.
 3. **Relax.** New patterns get a few relaxation steps. Press **Relax** for more, or **Auto-relax** to keep going until you stop it. While it's on, change the cell count, placement, gradient or sheet and watch the new pattern relax, or drag a point and watch the cells around it follow; the point stays under the pointer until you let go. Once the points settle it waits for your next change. Stop, Undo, Redo, New and Open turn it off.
 4. **Edit by hand.** Drag points to move cells, Alt-click (or the Add tool) to add one, Shift-click (or the Erase tool) to remove one. Once points are edited by hand, pattern settings wait for **Apply settings…** so your edits aren't lost by accident.
 5. **Style.** **Lines** draws each edge once. **Holes** cuts each cell out, leaving a web of material, with rounded corners and a smallest-hole limit.
@@ -122,6 +122,12 @@ The picture is kept in the project at up to 512 × 512 pixels in grey, about 260
 
 What to expect: a cut sheet has to be covered with cells, so white gets the largest cells, not none, and the picture reads as a soft halftone. Logos, lettering, silhouettes and high-contrast photos read best. Gil's test portrait reads well at 3,000 cells as Holes and at 5,000 as Lines, at 16×.
 
+### Stretch
+
+**Stretch** makes cells longer in one direction, like wood grain, bone or a dragonfly wing. Each point measures distance with the same ellipse instead of a circle, so at 3× relaxed cells are about three times as long as they are wide, along **Direction** (0° is right, 90° is up). Edges stay straight, so holes, rounded corners and cut files work as before. It works with every placement (a stretched honeycomb with Hex), every gradient including Picture, and imported shapes.
+
+Long cells leave long, thin webs between them, so a stretched panel is stiffer along the stretch than across it, and thin webs can break; in Holes style, check the narrowest hole in the measurements. With Stretch on, **Minimum spacing** is the spacing before stretching: points end up farther apart along the stretch and closer across it.
+
 ### Exports
 
 | Export | Contents | Units |
@@ -130,7 +136,7 @@ What to expect: a cut sheet has to be covered with cells, so white gets the larg
 | DXF | AutoCAD R12 text. Holes as closed polylines whose rounded corners are true arcs, lines as LINE, round sheets as CIRCLE, imported outlines as polylines. Layers `CUT_INNER` (red) and `CUT_OUTER` (blue); when shown, sites as CIRCLE on `SITES` (green) and Delaunay lines as LINE on `DELAUNAY` (magenta). | mm, or in for inch sheets |
 | SVG | The design as shown: colours, line width, fill, background, sites and Delaunay lines if visible, and the density picture in group `picture` if shown. | mm, in, or px for pixel sheets |
 | PNG | The design at the sheet's pixels per inch, with the density picture if shown, optionally with a transparent background. | px |
-| Project | Settings, every point, any imported shape and any density picture, as `.voronoi.json` (schema `voronoi-studio/project`, version 3; versions 1 and 2 open too). | mm |
+| Project | Settings, every point, any imported shape and any density picture, as `.voronoi.json` (schema `voronoi-studio/project`, version 4; versions 1 to 3 open too). | mm |
 
 Every export holds what the view shows: the **Sites**, **Edges** or **Holes**, and **Delaunay** buttons above the sheet decide what goes in, so turn Sites off for a file with only cuts. The density picture goes in the SVG and PNG when shown, but never in Laser SVG or DXF, where laser software would engrave it. The File tab lists what a cut file will hold. Cut files contain each line once, so a laser never cuts the same edge twice, and leave out cuts shorter than 5 µm, which a laser would only fire as a dot. Exports always show the whole sheet, whatever the zoom.
 
@@ -156,6 +162,7 @@ Every export holds what the view shows: the **Sites**, **Edges** or **Holes**, a
 | Include the sheet outline | Adds the sheet edge as the outer cut in Laser SVG and DXF. |
 | Gradient, Strength, Direction, Small cells at | The density gradient: None, Linear, Radial or Picture, how strong it is and which way it runs. |
 | Choose picture…, Replace…, Contrast, Softness, Picture size | The Picture gradient's picture and how it's read (see Picture gradient above). |
+| Stretch, Direction | How many times longer than wide cells are (Off, or 1.1–5×), and which way (0° is right, 90° is up). |
 | Sites, Edges or Holes, Delaunay, Picture | Show or hide each part of the design, in the view and in every export (the picture stays out of cut files). |
 
 ## Keyboard shortcuts
@@ -184,6 +191,7 @@ On Windows and Linux, use Ctrl for ⌘. Space pans, as in most design tools, rat
 - **Even placement** uses Bridson's Poisson-disk sampling with a spacing that varies with the gradient. For a set count it tightens the spacing until there are enough points, then drops the extra few at random.
 - **Relaxation** is Lloyd's method: each point moves to the centre of its cell. With a gradient the centre is weighted by the density squared, which is what keeps the gradient through hundreds of steps. Auto-relax counts the points as settled, and waits, when no point moves more than 1/2,000 of the typical spacing in a step.
 - **Picture gradient.** The picture is reduced to at most 512 pixels a side and turned grey by brightness (Rec. 709). Its darkest pixel becomes black and its lightest white, then Contrast, Softness (a three-pass box blur close to a Gaussian) and Small cells at give each pixel a tone from 0 to 1, and its density is Strength to the power of the tone. Relaxing weights each cell's centre by the density squared, as for the other gradients, but integrates it exactly over the picture's pixels instead of sampling it: by Green's theorem, each cell's weight and centre come from running sums along the pixel rows, taken around its outline (Secord, *Weighted Voronoi Stippling*, 2002). So sharp edges in the picture stay sharp and the points settle. On a white-to-black ramp at 9×, 2,000 relaxed cells come within 3 % of the expected count in every tenth of the width.
+- **Stretch.** One ellipse for every point (a Mahalanobis distance, as in Feng et al., *Cellular topology optimization on differentiable Voronoi diagrams*, 2022) turns the diagram into an ordinary Voronoi diagram in a squeezed copy of the sheet. The app squeezes the points and the pattern area by 1/√s along the direction and stretches them by √s across it, which keeps areas, builds and clips the cells there, then maps them back. New points are placed evenly in the squeezed copy, so they start stretched, and relaxing still moves each point to its cell's centre, which is what lowers the energy for any fixed ellipse. At 3× along 30°, relaxed cells measure 3.03 times as long as wide, along 30.0°. A different ellipse at each point would curve the edges, which cut files can't hold, so the stretch is the same across the sheet.
 - **Holes.** Each cell is convex, so it is shrunk by half the web plus the corner radius, then grown back by the radius with arcs. That gives exact round corners with no self-intersections. Small cells get the largest radius that fits.
 - **Imported shapes.** [Clipper2](https://github.com/PolyClipping/Clipper2), through [clipper2-ts](https://github.com/countertype/clipper2-ts), merges the outlines (even-odd), shrinks them by the border with round corners, and clips the cells that cross the outline. A grid of the outline's edges makes "is this point inside?" fast enough for Poisson-disk sampling. Cells wholly inside keep the exact method above; clipped cells can be concave, so their holes come from Clipper's offsets, with rounded corners drawn as short segments within 5 µm.
 - **Determinism.** A seeded random generator (mulberry32) makes every pattern repeatable from its seed and settings.
@@ -218,6 +226,15 @@ Picture gradient, measured on the production build in headless Chrome:
 | Portrait as a Holes panel, 3,000 holes at 16× | settled after 1,238 steps, 29 s; laser SVG 0.92 MB, DXF 2.34 MB |
 | Ramp, white to black, 2,000 cells at 9×, relaxed | every tenth of the width within 3 % of the expected count |
 | Two minutes of picture changes while Auto-relaxing | 44.0 → 42.9 steps/s, memory flat, the session copy at most 2 s old |
+
+Stretch, measured the same way (Lines, Auto-relax steps per second):
+
+| Cells | No stretch | 3× along 0° | 3× along 30° |
+| --- | --- | --- | --- |
+| 2,500 | 50.9 | 50.1 | 46.7 |
+| 10,000 | 37.5 | 34.4 | 24.2 |
+
+A stretch at an angle off the axes is slower at high counts, because the cells along the sheet's edge are clipped more carefully. On Line Growth's 2.5 MB outline, each new stretch takes 1–3.3 s to make its pattern.
 
 Patterns up to a few thousand cells stay smooth. With Auto-relax on while you drag the Cells slider, it kept relaxing at 45 steps/s with nearly 3,900 cells (production build, headless Chrome). At 10,000 cells, editing by hand and auto-relaxing are slow; set the relax steps and press Relax instead.
 

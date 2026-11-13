@@ -6,6 +6,7 @@ import { buildCells, cellCentroid, type Cell } from './diagram'
 import type { Vec } from './geometry'
 import { pictureCentroid } from './picture'
 import { clampToRegion, contains, type Region } from './region'
+import type { Stretch } from './stretch'
 
 export type RelaxResult = { points: Float64Array; maxMove: number }
 
@@ -29,8 +30,10 @@ function weightedCentroid(cell: Cell, field: (x: number, y: number) => number): 
   return w > 0 ? [cx / w, cy / w] : cellCentroid(cell)
 }
 
-export function lloydStep(points: Float64Array, region: Region, density: DensitySettings): RelaxResult {
-  const cells = buildCells(points, region)
+// With a stretch, the cells are measured with its ellipse, but each point still moves to its cell's centre:
+// that is what lowers the energy for any fixed ellipse.
+export function lloydStep(points: Float64Array, region: Region, density: DensitySettings, stretch?: Stretch | null): RelaxResult {
+  const cells = buildCells(points, region, stretch)
   const weighted = !uniformDensity(density)
   const field = densityField(density, region)
   // A picture's pixels are integrated exactly; the smooth gradients are sampled.
@@ -52,8 +55,8 @@ export function lloydStep(points: Float64Array, region: Region, density: Density
   return { points: out, maxMove }
 }
 
-export function relax(points: Float64Array, region: Region, density: DensitySettings, steps: number): RelaxResult {
+export function relax(points: Float64Array, region: Region, density: DensitySettings, steps: number, stretch?: Stretch | null): RelaxResult {
   let result: RelaxResult = { points, maxMove: 0 }
-  for (let i = 0; i < steps; i++) result = lloydStep(result.points, region, density)
+  for (let i = 0; i < steps; i++) result = lloydStep(result.points, region, density, stretch)
   return result
 }

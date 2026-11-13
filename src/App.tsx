@@ -92,9 +92,9 @@ export function App() {
   }, [status])
 
   // Geometry depends on a few settings only, so colour and visibility changes don't rebuild it.
-  const { width, height, shape, customShape, border, cellStyle, web, cornerRadius, minHole, showDelaunay } = s
-  const patternSettings = useMemo(() => ({ width, height, shape, customShape, border, cellStyle, web, cornerRadius, minHole, showDelaunay }),
-    [width, height, shape, customShape, border, cellStyle, web, cornerRadius, minHole, showDelaunay])
+  const { width, height, shape, customShape, border, cellStyle, web, cornerRadius, minHole, showDelaunay, stretch, stretchAngle } = s
+  const patternSettings = useMemo(() => ({ width, height, shape, customShape, border, cellStyle, web, cornerRadius, minHole, showDelaunay, stretch, stretchAngle }),
+    [width, height, shape, customShape, border, cellStyle, web, cornerRadius, minHole, showDelaunay, stretch, stretchAngle])
   const geometry = useMemo(() => buildGeometry(doc.points, patternSettings), [doc.points, patternSettings])
   const exactSpacing = useCallback(() => spacingOf(s), [s])
   const count = doc.points.length / 2
@@ -263,7 +263,9 @@ export function App() {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const target = event.target instanceof Element ? event.target : null
+      // Sliders and switches don't take typing, so shortcuts such as ⌘Z still work right after using one.
       const typing = Boolean(target?.closest('input, select, textarea'))
+        && !(target instanceof HTMLInputElement && ['range', 'checkbox', 'radio'].includes(target.type))
       const mod = event.metaKey || event.ctrlKey
       const key = event.key.toLowerCase()
       if (event.key === 'Escape') { setShowHelp(false); setPending(null); if (!typing) setTool('move'); return }

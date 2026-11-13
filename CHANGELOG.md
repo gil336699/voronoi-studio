@@ -1,5 +1,12 @@
 # Voronoi Studio Changelog
 
+## 1.6.0 2026-11-13
+
+- **Stretch.** A new Stretch section on the Pattern tab makes cells longer in one direction, like wood grain or a dragonfly wing. Set how many times longer than wide (up to 5×) and the direction. Each point measures distance with the same ellipse instead of a circle, so edges stay straight, and holes, rounded corners and cut files work as before. In testing, 3× along 30° gave relaxed cells 3.03 times as long as wide, along 30.0°.
+- Stretch works with every placement (Hex makes a stretched honeycomb), every gradient including Picture, Auto-relax and imported shapes. Erasing picks the cell under the pointer, measured with the same ellipse.
+- Fixed: ⌘Z, ⌘S and the other shortcuts did nothing straight after moving a slider or a switch, until you clicked somewhere else. Sliders and switches no longer count as typing.
+- Projects are now version 4; older projects open as before, without a stretch. Patterns without a stretch are unchanged: 270 of 270 test configurations give the same points as 1.5.0.
+
 ## 1.5.0 2026-11-13
 
 - **Picture gradient.** Choose **Picture** under Density gradient, or drop a picture on the window, and the cells follow it: small where it's dark, large where it's white, or the other way round. JPG, PNG, HEIC and HEIF from iPhones, TIFF (8 or 16 bit, LZW or Deflate), WebP, AVIF, GIF, BMP, ICO and SVG all open. Chrome, Edge and Firefox can't read HEIC or TIFF, so the app loads a decoder the first time you open one: a 12-megapixel iPhone photo takes about 1.5 s. Phone photos are turned upright. Photoshop files and PDFs get a message saying to export a JPG or PNG.

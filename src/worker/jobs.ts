@@ -3,7 +3,7 @@
 import { patternRegion } from '../voronoi/pattern'
 import { relax } from '../voronoi/relax'
 import { seedPoints } from '../voronoi/seeding'
-import { seedSettings, type Settings } from '../lib/settings'
+import { seedSettings, stretchOf, type Settings } from '../lib/settings'
 
 export type Job =
   | { kind: 'generate'; settings: Settings }
@@ -15,9 +15,9 @@ export function runJob(job: Job): JobResult {
   const density = seedSettings(job.settings).density
   if (job.kind === 'generate') {
     const seeded = seedPoints(seedSettings(job.settings), region)
-    const relaxed = relax(seeded.points, region, density, job.settings.relaxSteps)
+    const relaxed = relax(seeded.points, region, density, job.settings.relaxSteps, stretchOf(job.settings))
     return { points: relaxed.points, maxMove: relaxed.maxMove, capped: seeded.capped, spacing: seeded.spacing }
   }
-  const relaxed = relax(job.points, region, density, Math.max(1, job.steps))
+  const relaxed = relax(job.points, region, density, Math.max(1, job.steps), stretchOf(job.settings))
   return { ...relaxed, capped: false, spacing: 0 }
 }

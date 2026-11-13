@@ -1,11 +1,13 @@
 // The Voronoi diagram itself: one cell per point, clipped to the region. d3-delaunay builds the cells inside
 // the region's box; ellipses are then clipped against a 256-sided polygon, and custom shapes with Clipper2.
 // A cell is a list of rings: one convex polygon for rectangles and ellipses, and for custom shapes possibly
-// several pieces, with holes (negative area) where the shape has holes.
+// several pieces, with holes (negative area) where the shape has holes. With a stretch, everything is built in
+// the squeezed work space and stretched back (see stretch.ts).
 import { Delaunay } from 'd3-delaunay'
 import { centroid, clipConvex, normalize, signedArea, type Polygon, type Segment, type Vec } from './geometry'
 import { contains, regionArea, regionCenter, regionHeight, regionPolygon, regionWidth, type Region } from './region'
 import { shapeIndex } from './shape'
+import { cellsToSheet, pointsToWork, segmentsToSheet, stretchFrame, workRegion, type Stretch } from './stretch'
 
 export type Cell = Polygon[]
 export type Cells = (Cell | null)[]
@@ -26,7 +28,9 @@ export function cellCentroid(cell: Cell): Vec {
 const empty = (region: Region) => region.shape === 'custom' && !region.rings?.length
 type Voronoi = ReturnType<Delaunay<Float64Array>['voronoi']>
 
-export function buildCells(points: Float64Array, region: Region): Cells {
+export function buildCells(points: Float64Array, region: Region, stretch?: Stretch | null): Cells {
+  const f = stretchFrame(stretch)
+  if (f) return cellsToSheet(buildCells(pointsToWork(points, f), workRegion(region, f)), f)
   const n = points.length / 2
   if (n === 0) return []
   if (empty(region)) return new Array(n).fill(null)
@@ -35,7 +39,12 @@ export function buildCells(points: Float64Array, region: Region): Cells {
 
 // Cells and each inner edge once, for drawing and cutting. d3 lists every shared edge exactly once, which
 // is much faster than matching the edges of neighbouring cells.
-export function buildDiagram(points: Float64Array, region: Region): { cells: Cells; internal: Segment[] } {
+export function buildDiagram(points: Float64Array, region: Region, stretch?: Stretch | null): { cells: Cells; internal: Segment[] } {
+  const f = stretchFrame(stretch)
+  if (f) {
+    const work = buildDiagram(pointsToWork(points, f), workRegion(region, f))
+    return { cells: cellsToSheet(work.cells, f), internal: segmentsToSheet(work.internal, f) }
+  }
   const n = points.length / 2
   if (n === 0) return { cells: [], internal: [] }
   if (empty(region)) return { cells: new Array(n).fill(null), internal: [] }
@@ -83,11 +92,14 @@ function cellsOf(voronoi: Voronoi, n: number, region: Region): Cells {
   return cells
 }
 
-// Index of the point nearest to x, y, which is also the cell that contains it.
-export function nearestPoint(points: Float64Array, x: number, y: number): { index: number; distance: number } {
+// Index of the point nearest to x, y, which is also the cell that contains it. With a stretch, nearest is
+// measured with the stretch's ellipse, so it's still the cell under x, y; leave it out to find the dot itself.
+export function nearestPoint(points: Float64Array, x: number, y: number, stretch?: Stretch | null): { index: number; distance: number } {
+  const f = stretchFrame(stretch)
   let index = -1, best = Infinity
   for (let i = 0; i < points.length; i += 2) {
-    const d = (points[i] - x) ** 2 + (points[i + 1] - y) ** 2
+    const dx = points[i] - x, dy = points[i + 1] - y
+    const d = f ? (f.a * dx + f.b * dy) ** 2 + (f.b * dx + f.c * dy) ** 2 : dx * dx + dy * dy
     if (d < best) { best = d; index = i / 2 }
   }
   return { index, distance: Math.sqrt(best) }
@@ -117,7 +129,9 @@ export function uniqueEdges(cells: Cells): { internal: Segment[]; boundary: Segm
 // Delaunay edges, as the old Voronoi Lab drew them: long stretched edges along the hull and edges whose
 // middle falls outside the region are left out, so the border doesn't fill with dark bands. In a custom
 // shape, the rest are clipped to it, so no line crosses one of its holes or notches.
-export function delaunayEdges(points: Float64Array, region: Region): Segment[] {
+export function delaunayEdges(points: Float64Array, region: Region, stretch?: Stretch | null): Segment[] {
+  const f = stretchFrame(stretch)
+  if (f) return segmentsToSheet(delaunayEdges(pointsToWork(points, f), workRegion(region, f)), f)
   const n = points.length / 2
   if (n < 2) return []
   const shape = region.shape === 'custom' ? shapeIndex(region.rings ?? []) : null

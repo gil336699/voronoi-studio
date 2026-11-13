@@ -74,7 +74,7 @@ export const PatternPanel = memo(function PatternPanel({ s, change, stale, onApp
       <LengthField label={s.placement === 'even' ? 'Minimum spacing' : 'Grid spacing'} mm={s.autoSpacing ? autoSpacingValue : s.spacing}
         min={RANGES.spacing[0]} max={RANGES.spacing[1]} units={s.units} dpi={s.dpi} small
         unavailable={spacingOff || (s.autoSpacing && `Auto spacing picks about ${formatLength(autoSpacingValue, s.units, s.dpi, true)} for this count. Turn Auto spacing off to set your own.`)}
-        tip={s.placement === 'even' ? 'The smallest gap allowed between points, at the sparse end of any gradient.' : 'Distance between neighbouring grid points.'}
+        tip={`${s.placement === 'even' ? 'The smallest gap allowed between points, at the sparse end of any gradient.' : 'Distance between neighbouring grid points.'}${s.stretch > 1 ? ' With Stretch, it’s the spacing before stretching: points end up farther apart along the stretch and closer across it.' : ''}`}
         onChange={spacing => change({ spacing }, 'spacing')} />
       <SliderField label="Jitter" value={Math.round(s.jitter * 100)} min={0} max={100} format={v => `${v} %`}
         unavailable={!grid && 'Jitter loosens Hex and Square grids only.'}
@@ -122,6 +122,16 @@ export const PatternPanel = memo(function PatternPanel({ s, change, stale, onApp
           <Segmented label="Picture size" options={FITS} value={s.pictureFit} onChange={pictureFit => change({ pictureFit }, 'pictureFit')} />
         </>}
       </>}
+    </Section>
+
+    <Section title="Stretch">
+      <SliderField label="Stretch" value={s.stretch} min={RANGES.stretch[0]} max={RANGES.stretch[1]} step={0.1}
+        format={v => (v <= 1 ? 'Off' : `${v.toFixed(1)}×`)} tip="Make cells longer in one direction, like wood grain or a dragonfly wing. At 2× relaxed cells are about twice as long as they are wide."
+        onChange={stretch => change({ stretch: Math.round(stretch * 10) / 10 }, 'stretch')} />
+      <SliderField label="Direction" value={s.stretchAngle} min={0} max={175} step={5} format={v => `${v}°`}
+        unavailable={s.stretch <= 1 && 'Turn Stretch up from Off first.'}
+        tip="The direction cells get longer in. 0° is right, 90° is up." onChange={stretchAngle => change({ stretchAngle }, 'stretchAngle')} />
+      {s.stretch > 1 && <p className="hint">Each point measures distance with an ellipse instead of a circle, so cells stay straight-edged but grow longer along {s.stretchAngle}°. Long cells leave long, thin webs between them: in Holes style, check the narrowest hole.</p>}
     </Section>
 
     <Section title="Relaxation">

@@ -6,6 +6,7 @@ import type { CellStyle } from '../voronoi/pattern'
 import type { Shape } from '../voronoi/region'
 import { sanitizeShape, type CustomShape } from '../voronoi/shape'
 import { MAX_POINTS, type Placement, type SeedSettings } from '../voronoi/seeding'
+import type { Stretch } from '../voronoi/stretch'
 import type { Units } from './units'
 
 export type Settings = {
@@ -17,6 +18,8 @@ export type Settings = {
   density: DensityMode; densityStrength: number; densityAngle: number; densityInvert: boolean
   // The picture for the Picture gradient, kept when switching to another gradient and back.
   densityPicture: DensityPicture | null; pictureFit: PictureFit; pictureContrast: number; pictureSoftness: number; pictureInvert: boolean
+  // Stretch: how many times longer than wide cells are (1 is off), and the long direction in degrees.
+  stretch: number; stretchAngle: number
   relaxSteps: number
   // Style
   cellStyle: CellStyle; web: number; cornerRadius: number; minHole: number
@@ -31,6 +34,7 @@ export const DEFAULTS: Settings = {
   count: 300, placement: 'even', autoSpacing: true, spacing: 10, tries: 30, jitter: 0.3, seed: 1,
   density: 'none', densityStrength: 4, densityAngle: 0, densityInvert: false,
   densityPicture: null, pictureFit: 'fit', pictureContrast: 0, pictureSoftness: 0, pictureInvert: false,
+  stretch: 1, stretchAngle: 0,
   relaxSteps: 3,
   cellStyle: 'lines', web: 2, cornerRadius: 1, minHole: 0.5,
   // The old Voronoi Lab's colours: dark MIT red edges on white.
@@ -43,7 +47,7 @@ type NumericKey = { [K in keyof Settings]: Settings[K] extends number ? K : neve
 export const RANGES: Record<NumericKey, [number, number]> = {
   width: [5, 5000], height: [5, 5000], dpi: [36, 1200], border: [0, 500],
   count: [2, 10_000], spacing: [0.05, 1000], tries: [1, 100], jitter: [0, 1], seed: [0, 999_999],
-  densityStrength: [1, 20], densityAngle: [0, 360], pictureContrast: [-100, 100], pictureSoftness: [0, 100], relaxSteps: [0, 50],
+  densityStrength: [1, 20], densityAngle: [0, 360], pictureContrast: [-100, 100], pictureSoftness: [0, 100], stretch: [1, 5], stretchAngle: [0, 180], relaxSteps: [0, 50],
   web: [0, 100], cornerRadius: [0, 100], minHole: [0, 200], lineWidth: [0.005, 20],
 }
 
@@ -55,7 +59,7 @@ const CHOICES = {
 // Settings that decide where points go. Changing one makes a new pattern (unless points were edited).
 export const SEED_KEYS: (keyof Settings)[] = ['count', 'placement', 'autoSpacing', 'spacing', 'tries', 'jitter', 'seed',
   'density', 'densityStrength', 'densityAngle', 'densityInvert',
-  'densityPicture', 'pictureFit', 'pictureContrast', 'pictureSoftness', 'pictureInvert', 'relaxSteps']
+  'densityPicture', 'pictureFit', 'pictureContrast', 'pictureSoftness', 'pictureInvert', 'stretch', 'stretchAngle', 'relaxSteps']
 // Settings that move the region points live in. With "Keep points" on, points follow the sheet instead.
 export const SHEET_KEYS: (keyof Settings)[] = ['width', 'height', 'shape', 'border', 'customShape']
 
@@ -95,10 +99,13 @@ export function densitySettings(s: Settings): DensitySettings {
   return { mode: s.density, strength: s.densityStrength, angle: s.densityAngle, invert: s.densityInvert, picture }
 }
 
+export const stretchOf = (s: Pick<Settings, 'stretch' | 'stretchAngle'>): Stretch | null =>
+  s.stretch > 1 ? { amount: s.stretch, angle: s.stretchAngle } : null
+
 export function seedSettings(s: Settings): SeedSettings {
   return {
     count: Math.min(MAX_POINTS, s.count), placement: s.placement, autoSpacing: s.autoSpacing, spacing: s.spacing,
     tries: s.tries, jitter: s.jitter, seed: s.seed,
-    density: densitySettings(s),
+    density: densitySettings(s), stretch: stretchOf(s),
   }
 }

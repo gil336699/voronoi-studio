@@ -5,12 +5,14 @@ import { segmentLength, type Segment } from './geometry'
 import { makeHoles, type Hole } from './holes'
 import { insetRegion, regionPerimeter, sheetRegion, type Region, type Shape } from './region'
 import type { CustomShape } from './shape'
+import type { Stretch } from './stretch'
 
 export type CellStyle = 'lines' | 'holes'
 export type PatternSettings = {
   width: number; height: number; shape: Shape; customShape: CustomShape | null; border: number
   cellStyle: CellStyle; web: number; cornerRadius: number; minHole: number
   showDelaunay: boolean
+  stretch?: number; stretchAngle?: number // see stretch.ts; 1 or none is off
 }
 export type Metrics = {
   cells: number; holes: number; dropped: number // dropped: cells too small for a hole
@@ -40,7 +42,8 @@ export function patternRegion(s: Pick<PatternSettings, 'width' | 'height' | 'sha
 export function buildGeometry(points: Float64Array, s: PatternSettings): Geometry {
   const sheet = sheetRegion(s.width, s.height, s.shape, s.customShape)
   const region = patternRegion(s)
-  const { cells, internal } = buildDiagram(points, region)
+  const stretch: Stretch | null = (s.stretch ?? 1) > 1 ? { amount: s.stretch ?? 1, angle: s.stretchAngle ?? 0 } : null
+  const { cells, internal } = buildDiagram(points, region, stretch)
   const edges = { internal }
   const holes: Hole[] = []
   let dropped = 0
@@ -53,7 +56,7 @@ export function buildGeometry(points: Float64Array, s: PatternSettings): Geometr
       else dropped++
     })
   }
-  const delaunay = s.showDelaunay ? delaunayEdges(points, region) : []
+  const delaunay = s.showDelaunay ? delaunayEdges(points, region, stretch) : []
   return { sheet, region, cells, edges, holes, delaunay, metrics: measure(cells, edges, holes, dropped, sheet, region, s) }
 }
 

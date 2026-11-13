@@ -1,8 +1,9 @@
 // Where the first points go. Four placements: random, even (Poisson-disk), hex grid and square grid.
 // All of them are seeded, so the same settings and seed give the same points.
-import { densityField, densityPeak, integrateDensity, type DensitySettings } from './density'
+import { densityField, densityPeak, integrateDensity, type DensityField, type DensitySettings } from './density'
 import { createRng, type Rng } from './random'
 import { clampToRegion, contains, regionArea, regionHeight, regionWidth, type Region } from './region'
+import { pointsToSheet, stretchFrame, toSheet, workRegion, type Stretch } from './stretch'
 
 export type Placement = 'random' | 'even' | 'hex' | 'square'
 export type SeedSettings = {
@@ -14,7 +15,12 @@ export type SeedSettings = {
   jitter: number // 0–1, share of the grid spacing that grid points may wander
   seed: number
   density: DensitySettings
+  stretch?: Stretch | null
 }
+// A density to place points by: its value anywhere and its highest value, for rejection sampling.
+type Field = { at: DensityField; peak: number }
+const fieldOf = (density: DensitySettings | Field, region: Region): Field =>
+  'at' in density ? density : { at: densityField(density, region), peak: densityPeak(density) }
 // spacing: the spacing actually used (0 for random), so turning Auto spacing off keeps the same look.
 export type SeedResult = { points: Float64Array; capped: boolean; spacing: number }
 
@@ -22,12 +28,26 @@ export const MAX_POINTS = 20_000
 // Bridson's method fills about this share of the hexagonal-packing count, so it sets the starting spacing.
 const POISSON_FILL = 0.62
 
+// With a stretch, points are placed evenly in the squeezed work space and stretched back, so they sit farther
+// apart along the stretch than across it. The squeeze keeps areas, so the density reads the same there.
 export function seedPoints(settings: SeedSettings, region: Region): SeedResult {
+  const f = stretchFrame(settings.stretch)
+  const field = fieldOf(settings.density, region)
+  if (!f) return seedIn(settings, region, field)
+  const work = seedIn(settings, workRegion(region, f), { at: (x, y) => field.at(...toSheet(f, x, y)), peak: field.peak })
+  const points = pointsToSheet(work.points, f)
+  for (let i = 0; i < points.length; i += 2) {
+    if (!contains(region, points[i], points[i + 1])) [points[i], points[i + 1]] = clampToRegion(region, points[i], points[i + 1])
+  }
+  return { ...work, points }
+}
+
+function seedIn(settings: SeedSettings, region: Region, field: Field): SeedResult {
   const rng = createRng(settings.seed)
   const count = Math.max(2, Math.min(MAX_POINTS, Math.round(settings.count)))
   switch (settings.placement) {
-    case 'random': return { points: randomPoints(count, region, settings.density, rng), capped: false, spacing: 0 }
-    case 'even': return evenPoints(settings, count, region, rng)
+    case 'random': return { points: randomPoints(count, region, field, rng), capped: false, spacing: 0 }
+    case 'even': return evenPoints(settings, count, region, rng, field)
     case 'hex': return gridPoints(settings, count, region, rng, true)
     case 'square': return gridPoints(settings, count, region, rng, false)
   }
@@ -38,9 +58,8 @@ export function typicalSpacing(region: Region, count: number): number {
   return Math.sqrt(regionArea(region) / Math.max(1, count))
 }
 
-function randomPoints(count: number, region: Region, density: DensitySettings, rng: Rng): Float64Array {
-  const field = densityField(density, region)
-  const top = densityPeak(density)
+function randomPoints(count: number, region: Region, density: Field, rng: Rng): Float64Array {
+  const field = density.at, top = density.peak
   const out = new Float64Array(count * 2)
   const w = regionWidth(region), h = regionHeight(region)
   let n = 0
@@ -54,9 +73,9 @@ function randomPoints(count: number, region: Region, density: DensitySettings, r
 }
 
 // Bridson's Poisson-disk sampling with a spacing that can vary across the sheet.
-export function poissonDisk(region: Region, spacing: number, tries: number, density: DensitySettings, rng: Rng, limit = MAX_POINTS): SeedResult {
-  const field = densityField(density, region)
-  const top = densityPeak(density)
+export function poissonDisk(region: Region, spacing: number, tries: number, densityIn: DensitySettings | Field, rng: Rng, limit = MAX_POINTS): SeedResult {
+  const density = fieldOf(densityIn, region)
+  const field = density.at, top = density.peak
   const radius = (x: number, y: number) => spacing / Math.sqrt(field(x, y))
   const rMin = spacing / Math.sqrt(top), rMax = spacing
   const cell = rMin / Math.SQRT2
@@ -163,23 +182,22 @@ export function poissonDisk(region: Region, spacing: number, tries: number, dens
   return { points, capped, spacing }
 }
 
-function evenPoints(settings: SeedSettings, count: number, region: Region, rng: Rng): SeedResult {
+function evenPoints(settings: SeedSettings, count: number, region: Region, rng: Rng, density: Field): SeedResult {
   const tries = Math.max(1, Math.min(100, Math.round(settings.tries)))
-  if (!settings.autoSpacing) return poissonDisk(region, Math.max(1e-3, settings.spacing), tries, settings.density, rng)
+  if (!settings.autoSpacing) return poissonDisk(region, Math.max(1e-3, settings.spacing), tries, density, rng)
   // Pick the spacing that should give the count, then tighten it until there are enough points.
-  const field = densityField(settings.density, region)
-  const mass = integrateDensity(field, region, (x, y) => contains(region, x, y))
+  const mass = integrateDensity(density.at, region, (x, y) => contains(region, x, y))
   let spacing = Math.sqrt((POISSON_FILL * 2 / Math.sqrt(3)) * mass / count)
-  let best = poissonDisk(region, spacing, tries, settings.density, rng, count * 3)
+  let best = poissonDisk(region, spacing, tries, density, rng, count * 3)
   // Thin shapes hold more points than their area suggests. A sample that hit the limit may have left pieces
   // unseeded, so widen the spacing until it fits.
   for (let round = 0; round < 6 && best.capped; round++) {
     spacing *= Math.SQRT2
-    best = poissonDisk(region, spacing, tries, settings.density, rng, count * 3)
+    best = poissonDisk(region, spacing, tries, density, rng, count * 3)
   }
   for (let round = 0; round < 4 && best.points.length && best.points.length / 2 < count; round++) {
     spacing *= Math.sqrt((best.points.length / 2) / count) * 0.97
-    best = poissonDisk(region, spacing, tries, settings.density, rng, count * 3)
+    best = poissonDisk(region, spacing, tries, density, rng, count * 3)
   }
   return { points: trim(best.points, count, rng), capped: false, spacing: best.spacing }
 }

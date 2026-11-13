@@ -1,6 +1,6 @@
 import { type RefObject, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { drawDesign, type Hover } from '../lib/render'
-import type { Settings } from '../lib/settings'
+import { stretchOf, type Settings } from '../lib/settings'
 import { nearestPoint } from '../voronoi/diagram'
 import type { Geometry } from '../voronoi/pattern'
 import { clampToRegion, contains } from '../voronoi/region'
@@ -142,11 +142,14 @@ export function Stage({ geometry, points, settings, tool, frameRef, controlRef, 
 
   const hitRadius = (event: React.PointerEvent) => (event.pointerType === 'touch' ? 24 : 12) / scale
   const inRegion = (x: number, y: number) => contains(geometry.region, x, y)
+  // The cell under the pointer is the nearest point measured with the stretch's ellipse; the dot under the
+  // pointer is the nearest point on screen.
+  const stretch = stretchOf(settings)
 
   const eraseAt = (x: number, y: number, last: number): number => {
     const current = live.current
     if (!inRegion(x, y) || current.length <= 2) return last
-    const { index } = nearestPoint(current, x, y)
+    const { index } = nearestPoint(current, x, y, stretch)
     if (index < 0 || index === last) return last
     const next = new Float64Array(current.length - 2)
     next.set(current.subarray(0, index * 2)); next.set(current.subarray(index * 2 + 2), index * 2)
@@ -235,7 +238,7 @@ export function Stage({ geometry, points, settings, tool, frameRef, controlRef, 
     const erasing = tool === 'erase' || (tool === 'move' && event.shiftKey)
     if (tool === 'pan' || space.current) { setHover(null); setCursor('grab'); return }
     if (erasing) {
-      const near = inRegion(x, y) ? nearestPoint(live.current, x, y) : null
+      const near = inRegion(x, y) ? nearestPoint(live.current, x, y, stretch) : null
       setHover(near && near.index >= 0 ? { kind: 'cell', index: near.index } : null)
       setCursor(near ? 'pointer' : 'default')
       return

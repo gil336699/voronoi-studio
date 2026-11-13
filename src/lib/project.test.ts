@@ -84,3 +84,19 @@ describe('history', () => {
     expect(r.state).toBe(3)
   })
 })
+
+describe('stretch in project files', () => {
+  it('saves the stretch, clamps it, and makes a new pattern when it changes', async () => {
+    const { planChange } = await import('./changes')
+    const settings = { ...DEFAULTS, stretch: 2.5, stretchAngle: 30 }
+    const back = parseProject(serializeProject({ settings, points: Float64Array.from([10, 10, 50, 50]), handEdited: false }))
+    expect(back.settings.stretch).toBe(2.5)
+    expect(back.settings.stretchAngle).toBe(30)
+    expect(JSON.parse(serializeProject({ settings, points: new Float64Array(), handEdited: false })).version).toBe(4)
+    expect(sanitizeSettings({ stretch: 9, stretchAngle: -20 })).toMatchObject({ stretch: 5, stretchAngle: 0 })
+    expect(sanitizeSettings({}).stretch).toBe(1) // older files: no stretch
+    const doc = { settings: DEFAULTS, points: new Float64Array(4), handEdited: false, stale: false }
+    expect(planChange(doc, { stretch: 2 }).remake).toBe(true)
+    expect(planChange({ ...doc, settings: { ...DEFAULTS, stretch: 2 } }, { stretchAngle: 45 }).remake).toBe(true)
+  })
+})
