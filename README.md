@@ -33,7 +33,7 @@ The sheet fills the window, and the controls float above it on translucent glass
 
 - **Top left.** The app name and the **?** button for shortcuts and the quick start.
 - **Left panel.** Four tabs: **Pattern** (cells, placement, gradient, stretch, relaxation), **Sheet** (size, units, shape or imported outline, border), **Style** (Lines or Holes, colours) and **File** (project and exports). A dot on Pattern means hand edits are holding back new settings; a dot on File means unsaved changes.
-- **Above the sheet.** Tools (Move, Add, Erase, Pan) on the left. Sites, Edges or Holes, Delaunay, Picture (with a Picture gradient), and zoom on the right. A caption explains the current tool.
+- **Above the sheet.** Tools (Move, Add, Erase, Pan, and Move picture with a Picture gradient) on the left. Sites, Edges or Holes, Delaunay, Picture (with a Picture gradient), and zoom on the right. A caption explains the current tool.
 - **Below the sheet.** The action dock: **Generate**, **Relax**, **Auto-relax**, the status, and Undo and Redo.
 - **Right panel.** **Measurements**: sheet size, cells, holes, average cell size, evenness, the narrowest hole or shortest edge, and total cut length.
 
@@ -98,7 +98,7 @@ Where a cell wraps right round a hole in the shape, the app leaves a bridge of w
 
 ### Picture gradient
 
-Choose **Picture**, or drop a picture on the window, and the cells follow it: small where it's dark, large where it's white. A faint copy shows behind the cells; the **Picture** button above the sheet, or key 4, hides it.
+Choose **Picture**, or drop a picture on the window, and the cells follow it: small where it's dark, large where it's white. A faint copy shows behind the cells; the **Picture** button above the sheet, or key 4, hides it. To place it by hand, choose the **Move picture** tool (M): drag the picture to move it, or drag a corner to resize it while the opposite corner stays put. Each drag is one Undo step.
 
 | File type | How it opens |
 | --- | --- |
@@ -126,7 +126,7 @@ What to expect: a cut sheet has to be covered with cells, so white gets the larg
 
 ### Stretch
 
-**Stretch** makes cells longer in one direction, like wood grain, bone or a dragonfly wing. Each point measures distance with the same ellipse instead of a circle, so at 3× relaxed cells are about three times as long as they are wide, along **Stretch direction** (0° is right, 90° is up). Edges stay straight, so holes, rounded corners and cut files work as before. It works with every placement (a stretched honeycomb with Hex), every gradient including Picture, and imported shapes.
+**Stretch** makes cells longer in one direction, like wood grain, bone or a dragonfly wing. Each point measures distance with the same ellipse instead of a circle, so with **Amount** at 3× relaxed cells are about three times as long as they are wide, along **Direction** (0° is right, 90° is up). Edges stay straight, so holes, rounded corners and cut files work as before. It works with every placement (a stretched honeycomb with Hex), every gradient including Picture, and imported shapes.
 
 Long cells leave long, thin webs between them, so a stretched panel is stiffer along the stretch than across it, and thin webs can break; in Holes style, check the narrowest hole in the measurements. With Stretch on, **Minimum spacing** is the spacing before stretching: points end up farther apart along the stretch and closer across it.
 
@@ -164,7 +164,7 @@ Every export holds what the view shows: the **Sites**, **Edges** or **Holes**, a
 | Include the sheet outline | Adds the sheet edge as the outer cut in Laser SVG and DXF. |
 | Gradient, Strength, Direction, Small cells at | The density gradient: None, Linear, Radial or Picture, how strong it is and which way it runs. |
 | Choose picture…, Replace…, Contrast, Softness, Picture size, Scale, Move right, Move down | The Picture gradient's picture, how it's read, and its size and place on the sheet (see Picture gradient above). |
-| Stretch, Stretch direction | How many times longer than wide cells are (Off, or 1.1–5×), and which way (0° is right, 90° is up). |
+| Stretch: Amount, Direction | How many times longer than wide cells are (Off, or 1.1–5×), and which way (0° is right, 90° is up). |
 | Sites, Edges or Holes, Delaunay, Picture | Show or hide each part of the design, in the view and in every export (the picture stays out of cut files). |
 
 ## Keyboard shortcuts
@@ -174,7 +174,7 @@ Every export holds what the view shows: the **Sites**, **Edges** or **Holes**, a
 | G | Generate a new pattern |
 | R | Relax |
 | P | Auto-relax on or off |
-| V, A, E, H | Move, Add, Erase and Pan tools |
+| V, A, E, H, M | Move, Add, Erase, Pan and Move picture tools |
 | Space + drag | Pan with any tool |
 | Alt-click, Shift-click | Add a cell, erase a cell |
 | Scroll, pinch | Zoom |

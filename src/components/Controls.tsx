@@ -42,9 +42,10 @@ export function Segmented<T extends string>({ label, options, value, onChange, u
   </div>
 }
 
-export function SliderField({ label, value, min, max, step = 1, onChange, format, tip, unavailable, log }: Tip & {
+// name: what screen readers call the slider, when the visible label needs its section heading to make sense.
+export function SliderField({ label, value, min, max, step = 1, onChange, format, tip, unavailable, log, name }: Tip & {
   label: string; value: number; min: number; max: number; step?: number; onChange: (value: number) => void
-  format?: (value: number) => string; log?: boolean
+  format?: (value: number) => string; log?: boolean; name?: string
 }) {
   // Log sliders give equal travel to 10→100 and 1,000→10,000, which suits counts.
   const toTrack = (v: number) => (log ? Math.log(v) : v)
@@ -52,7 +53,7 @@ export function SliderField({ label, value, min, max, step = 1, onChange, format
   const snap = (v: number) => Math.min(max, Math.max(min, Math.round(v / step) * step))
   return <label className="field" data-tip={unavailable || tip}>
     <span className="field-label"><span>{label}</span><b>{format ? format(value) : value}</b></span>
-    <input type="range" min={toTrack(min)} max={toTrack(max)} step={log ? 'any' : step} value={toTrack(value)} disabled={Boolean(unavailable)}
+    <input type="range" aria-label={name} min={toTrack(min)} max={toTrack(max)} step={log ? 'any' : step} value={toTrack(value)} disabled={Boolean(unavailable)}
       style={rangeFill(toTrack(value), toTrack(min), toTrack(max))} aria-valuetext={format ? format(value) : String(value)}
       onChange={event => onChange(snap(fromTrack(Number(event.currentTarget.value))))} />
   </label>

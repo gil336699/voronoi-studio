@@ -136,11 +136,11 @@ export const PatternPanel = memo(function PatternPanel({ s, change, stale, onApp
     </Section>
 
     <Section title="Stretch">
-      <SliderField label="Stretch" value={s.stretch} min={RANGES.stretch[0]} max={RANGES.stretch[1]} step={0.1}
+      <SliderField label="Amount" name="Stretch amount" value={s.stretch} min={RANGES.stretch[0]} max={RANGES.stretch[1]} step={0.1}
         format={v => (v <= 1 ? 'Off' : `${v.toFixed(1)}×`)} tip="Make cells longer in one direction, like wood grain or a dragonfly wing. At 2× relaxed cells are about twice as long as they are wide."
         onChange={stretch => change({ stretch: Math.round(stretch * 10) / 10 }, 'stretch')} />
-      <SliderField label="Stretch direction" value={s.stretchAngle} min={0} max={175} step={5} format={v => `${v}°`}
-        unavailable={s.stretch <= 1 && 'Turn Stretch up from Off first.'}
+      <SliderField label="Direction" name="Stretch direction" value={s.stretchAngle} min={0} max={175} step={5} format={v => `${v}°`}
+        unavailable={s.stretch <= 1 && 'Turn the amount up from Off first.'}
         tip="The direction cells get longer in. 0° is right, 90° is up." onChange={stretchAngle => change({ stretchAngle }, 'stretchAngle')} />
       {s.stretch > 1 && <p className="hint">Each point measures distance with an ellipse instead of a circle, so cells stay straight-edged but grow longer along {s.stretchAngle}°. Long cells leave long, thin webs between them: in Holes style, check the narrowest hole.</p>}
     </Section>

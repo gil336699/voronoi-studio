@@ -1,11 +1,13 @@
-import { type RefObject, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { type RefObject, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { drawDesign, type Hover } from '../lib/render'
-import { stretchOf, type Settings } from '../lib/settings'
+import { densitySettings, stretchOf, type Settings } from '../lib/settings'
+import { boxCorners, pictureBox, resizePicture, type PictureSettings } from '../voronoi/picture'
 import { nearestPoint } from '../voronoi/diagram'
 import type { Geometry } from '../voronoi/pattern'
 import { clampToRegion, contains } from '../voronoi/region'
 
-export type Tool = 'move' | 'add' | 'erase' | 'pan'
+export type Tool = 'move' | 'add' | 'erase' | 'pan' | 'picture'
+export type PicturePatch = Partial<Pick<Settings, 'pictureScale' | 'pictureX' | 'pictureY'>>
 export type StageControls = { fit: () => void; zoomBy: (factor: number) => void }
 export type EditKind = 'move' | 'add' | 'erase'
 
@@ -15,6 +17,9 @@ type Drag =
   | { kind: 'point'; index: number; dx: number; dy: number }
   | { kind: 'erase'; last: number }
   | { kind: 'pinch'; distance: number; midX: number; midY: number; view: View; worldX: number; worldY: number }
+  // The Move picture tool: dragging the picture, or one of its corners, from the settings it started with.
+  | { kind: 'picture-move'; startX: number; startY: number; from: PictureSettings; gesture: number }
+  | { kind: 'picture-size'; corner: number; from: PictureSettings; gesture: number }
 
 const ZOOM_MIN = 0.25, ZOOM_MAX = 40
 const FIT_PADDING = 20
@@ -22,7 +27,7 @@ const FIT_PADDING = 20
 // The sheet preview. It fills the window behind the panels and fits the sheet into the free area between
 // them (the frame). Pointer input edits points: drag to move, Alt-click to add, Shift-click to erase,
 // Space or the Pan tool to pan, wheel or pinch to zoom.
-export function Stage({ geometry, points, settings, tool, frameRef, controlRef, onBeginEdit, onPoints, onRelease, onZoom, onNotice }: {
+export function Stage({ geometry, points, settings, tool, frameRef, controlRef, onBeginEdit, onPoints, onRelease, onZoom, onNotice, onPicture }: {
   geometry: Geometry
   points: Float64Array
   settings: Settings
@@ -35,6 +40,8 @@ export function Stage({ geometry, points, settings, tool, frameRef, controlRef, 
   onRelease: () => void
   onZoom: (zoom: number) => void
   onNotice: (text: string) => void
+  // A step of a picture drag. Steps of one drag share a gesture number, so the drag is one Undo step.
+  onPicture: (patch: PicturePatch, gesture: number) => void
 }) {
   const box = useRef<HTMLDivElement>(null)
   const canvas = useRef<HTMLCanvasElement>(null)
@@ -43,6 +50,7 @@ export function Stage({ geometry, points, settings, tool, frameRef, controlRef, 
   const [hover, setHover] = useState<Hover>(null)
   const [cursor, setCursor] = useState('default')
   const drag = useRef<Drag | null>(null)
+  const gestures = useRef(0)
   const pointers = useRef(new Map<number, { x: number; y: number }>())
   const space = useRef(false)
   // Latest points for handlers that run between renders.
@@ -78,6 +86,10 @@ export function Stage({ geometry, points, settings, tool, frameRef, controlRef, 
 
   useEffect(() => onZoom(view.zoom), [view.zoom, onZoom])
 
+  // The picture's outline, shown with handles while the Move picture tool is on.
+  const pictureSettings = useMemo(() => densitySettings(settings).picture, [settings])
+  const frame = useMemo(() => (tool === 'picture' && pictureSettings ? pictureBox(pictureSettings) : null), [tool, pictureSettings])
+
   // Draw whenever anything visible changes.
   useLayoutEffect(() => {
     const el = canvas.current
@@ -89,10 +101,10 @@ export function Stage({ geometry, points, settings, tool, frameRef, controlRef, 
     if (!ctx) return
     ctx.setTransform(1, 0, 0, 1, 0, 0)
     ctx.clearRect(0, 0, w, h)
-    drawDesign(ctx, geometry, points, settings, { scale, ox, oy, dpr, preview: true, hover })
+    drawDesign(ctx, geometry, points, settings, { scale, ox, oy, dpr, preview: true, hover, frame })
     // Read-only view state for QA scripts in development builds.
     if (import.meta.env.DEV) (window as unknown as { __stage: unknown }).__stage = { scale, ox, oy, points, rect: box.current?.getBoundingClientRect() }
-  }, [geometry, points, settings, scale, ox, oy, size, hover])
+  }, [geometry, points, settings, scale, ox, oy, size, hover, frame])
 
   const toWorld = useCallback((clientX: number, clientY: number) => {
     const r = box.current!.getBoundingClientRect()
@@ -141,6 +153,9 @@ export function Stage({ geometry, points, settings, tool, frameRef, controlRef, 
   }, [])
 
   const hitRadius = (event: React.PointerEvent) => (event.pointerType === 'touch' ? 24 : 12) / scale
+  // With the Move picture tool: a corner handle within reach of x, y, or −1.
+  const cornerAt = (x: number, y: number, reach: number) => (frame ? boxCorners(frame).findIndex(([cx, cy]) => Math.hypot(cx - x, cy - y) <= reach) : -1)
+  const insideFrame = (x: number, y: number) => Boolean(frame && x >= frame.x0 && x <= frame.x1 && y >= frame.y0 && y <= frame.y1)
   const inRegion = (x: number, y: number) => contains(geometry.region, x, y)
   // The cell under the pointer is the nearest point measured with the stretch's ellipse; the dot under the
   // pointer is the nearest point on screen.
@@ -175,6 +190,16 @@ export function Stage({ geometry, points, settings, tool, frameRef, controlRef, 
     const panning = tool === 'pan' || space.current || event.button === 1
     if (panning) { drag.current = { kind: 'pan', startX: event.clientX, startY: event.clientY, panX: view.panX, panY: view.panY }; setCursor('grabbing'); return }
     if (event.button !== 0) return
+    if (tool === 'picture') {
+      const from = pictureSettings
+      const corner = cornerAt(x, y, hitRadius(event))
+      if (from && corner >= 0) { drag.current = { kind: 'picture-size', corner, from, gesture: ++gestures.current }; return }
+      if (from && insideFrame(x, y)) { drag.current = { kind: 'picture-move', startX: x, startY: y, from, gesture: ++gestures.current }; setCursor('grabbing'); return }
+      // Outside the picture, dragging pans the view, as with the Move tool.
+      drag.current = { kind: 'pan', startX: event.clientX, startY: event.clientY, panX: view.panX, panY: view.panY }
+      setCursor('grabbing')
+      return
+    }
     const adding = tool === 'add' || (tool === 'move' && event.altKey)
     const erasing = tool === 'erase' || (tool === 'move' && event.shiftKey)
     if (adding) {
@@ -233,10 +258,26 @@ export function Stage({ geometry, points, settings, tool, frameRef, controlRef, 
       return
     }
     if (d?.kind === 'erase') { d.last = eraseAt(x, y, d.last); return }
+    if (d?.kind === 'picture-move') {
+      const round = (v: number) => Math.round(v * 100) / 100
+      onPicture({ pictureX: round((d.from.offsetX ?? 0) + x - d.startX), pictureY: round((d.from.offsetY ?? 0) + y - d.startY) }, d.gesture)
+      return
+    }
+    if (d?.kind === 'picture-size') {
+      const r = resizePicture(d.from, d.corner, x, y)
+      onPicture({ pictureScale: r.scale, pictureX: r.offsetX, pictureY: r.offsetY }, d.gesture)
+      return
+    }
     if (event.pointerType === 'touch') return
     // Hover feedback: the point that would move, or the cell that would be erased.
     const erasing = tool === 'erase' || (tool === 'move' && event.shiftKey)
     if (tool === 'pan' || space.current) { setHover(null); setCursor('grab'); return }
+    if (tool === 'picture') {
+      setHover(null)
+      const corner = cornerAt(x, y, 12 / scale)
+      setCursor(corner >= 0 ? (corner % 2 ? 'nesw-resize' : 'nwse-resize') : insideFrame(x, y) ? 'move' : 'default')
+      return
+    }
     if (erasing) {
       const near = inRegion(x, y) ? nearestPoint(live.current, x, y, stretch) : null
       setHover(near && near.index >= 0 ? { kind: 'cell', index: near.index } : null)

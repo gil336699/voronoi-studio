@@ -19,7 +19,7 @@ const SHORTCUTS: [string, string][] = [
   ['G', 'Generate a new pattern'],
   ['R', 'Relax'],
   ['P', 'Auto-relax on or off'],
-  ['V  A  E  H', 'Move, Add, Erase and Pan tools'],
+  ['V  A  E  H  M', 'Move, Add, Erase, Pan and Move picture tools'],
   ['Space + drag', 'Pan with any tool'],
   ['Alt-click', 'Add a cell'],
   ['Shift-click', 'Erase a cell'],

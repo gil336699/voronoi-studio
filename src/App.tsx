@@ -4,7 +4,7 @@ import { FilePanel, type ExportKind } from './components/FilePanel'
 import { ConfirmDialog, HelpDialog, QuickStart, type Pending } from './components/Help'
 import { PatternPanel } from './components/PatternPanel'
 import { SheetPanel } from './components/SheetPanel'
-import { Stage, type StageControls, type Tool } from './components/Stage'
+import { Stage, type PicturePatch, type StageControls, type Tool } from './components/Stage'
 import { StylePanel } from './components/StylePanel'
 import { TabPanel, Tabs } from './components/Tabs'
 import { TooltipLayer } from './components/Tooltip'
@@ -184,6 +184,10 @@ export function App() {
     }
   }
 
+  // Each drag of the picture on the sheet is one Undo step.
+  const { change } = design
+  const movePicture = useCallback((patch: PicturePatch, gesture: number) => change(patch, `pictureDrag:${gesture}`), [change])
+
   // A picture for the Picture gradient. It's a pattern setting, so with hand edits it waits to be applied.
   const choosePicture = useCallback(() => pictureInput.current?.click(), [])
   const readDensityPicture = async (file: File) => {
@@ -257,6 +261,8 @@ export function App() {
   const relaxBlocked = count < 3 && 'Relaxing needs at least 3 points.'
   const toggle = (key: 'showSites' | 'showEdges' | 'showDelaunay' | 'showPicture') => design.change({ [key]: !s[key] }, key)
   const pictureOn = s.density === 'picture' && Boolean(s.densityPicture)
+  // The Move picture tool only exists with a Picture gradient; without one it acts as Move.
+  const activeTool: Tool = tool === 'picture' && !pictureOn ? 'move' : tool
   const closeQuickStart = () => { setShowQuickStart(false); storage.set(QUICK_START_KEY, '1') }
 
   // Keyboard shortcuts, ignored while typing. Re-registered each render so handlers see current state.
@@ -283,6 +289,7 @@ export function App() {
       else if (key === 'a') setTool('add')
       else if (key === 'e') setTool('erase')
       else if (key === 'h') setTool('pan')
+      else if (key === 'm') { if (pictureOn) setTool('picture') }
       else if (key === '1') toggle('showSites')
       else if (key === '2') toggle('showEdges')
       else if (key === '3') toggle('showDelaunay')
@@ -308,9 +315,9 @@ export function App() {
   return <main className="studio">
     <TooltipLayer />
     <div className="stage">
-      <Stage geometry={geometry} points={doc.points} settings={s} tool={tool} frameRef={frameRef} controlRef={stageRef}
+      <Stage geometry={geometry} points={doc.points} settings={s} tool={activeTool} frameRef={frameRef} controlRef={stageRef}
         onBeginEdit={() => { design.beginEdit(); setStatus(null) }} onPoints={design.editPoints} onRelease={design.releasePoint} onZoom={setZoom}
-        onNotice={text => setStatus({ text })} />
+        onNotice={text => setStatus({ text })} onPicture={movePicture} />
     </div>
 
     <header className="brand glass">
@@ -353,7 +360,7 @@ export function App() {
     </aside>
 
     <div className="center">
-      <ViewBar tool={tool} setTool={setTool} s={s} toggle={toggle} picture={pictureOn} zoom={zoom} onFit={() => stageRef.current?.fit()} onZoom={f => stageRef.current?.zoomBy(f)} />
+      <ViewBar tool={activeTool} setTool={setTool} s={s} toggle={toggle} picture={pictureOn} zoom={zoom} onFit={() => stageRef.current?.fit()} onZoom={f => stageRef.current?.zoomBy(f)} />
       <div className="sheet-frame" ref={frameRef}>
         {showQuickStart && <QuickStart onClose={closeQuickStart} />}
       </div>

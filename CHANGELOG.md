@@ -1,5 +1,11 @@
 # Voronoi Studio Changelog
 
+## 1.7.0 2026-11-13
+
+- **Move picture tool.** With a Picture gradient on, a new tool (M) in the Tools bar shows the picture's outline with a handle at each corner. Drag the picture to move it, or drag a corner to resize it while the opposite corner stays put. Outside the picture, dragging pans as usual. Each drag is one Undo step, works by touch too, and Auto-relax keeps running through it. Before, the picture could only be placed with the Scale, Move right and Move down fields.
+- The Stretch section's sliders now read **Amount** and **Direction**, under the Stretch heading. Screen readers still hear "Stretch amount" and "Stretch direction", so they don't clash with the Linear gradient's Direction.
+- With a Picture gradient on, windows from about 1,300 to 1,500 px wide show the tool buttons as symbols, so the tool and view bars stay on one row and the sheet keeps its size.
+
 ## 1.6.0 2026-11-13
 
 - **Stretch.** A new Stretch section on the Pattern tab makes cells longer in one direction, like wood grain or a dragonfly wing. Set how many times longer than wide (up to 5×) and the stretch direction. Each point measures distance with the same ellipse instead of a circle, so edges stay straight, and holes, rounded corners and cut files work as before. In testing, 3× along 30° gave relaxed cells 3.03 times as long as wide, along 30.0°.

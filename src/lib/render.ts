@@ -3,6 +3,7 @@
 import type { Segment } from '../voronoi/geometry'
 import { arcFromBulge, type Outline } from '../voronoi/holes'
 import type { Geometry } from '../voronoi/pattern'
+import { boxCorners, type PictureBox } from '../voronoi/picture'
 import { regionCenter, regionHeight, regionWidth, type Region } from '../voronoi/region'
 import { PICTURE_OPACITY, pictureCanvas, shownPicture } from './pictureLayer'
 import { DELAUNAY_COLOR, SITE_COLOR, siteRadius } from './style'
@@ -14,6 +15,7 @@ export type DrawOptions = {
   preview: boolean // adds the paper shadow, minimum line widths and hover marks
   hover?: Hover
   transparent?: boolean
+  frame?: PictureBox | null // the picture's outline and corner handles, while the Move picture tool is on
 }
 
 const PREVIEW_MIN_LINE = 0.75 // css px
@@ -124,6 +126,23 @@ export function drawDesign(ctx: CanvasRenderingContext2D, g: Geometry, points: F
   ctx.restore()
 
   if (o.preview && o.hover) drawHover(ctx, g, points, o.hover, px)
+  if (o.preview && o.frame) drawFrame(ctx, o.frame, px)
+}
+
+// A dashed outline round the picture, with a square handle at each corner for resizing.
+export const HANDLE_PX = 10
+function drawFrame(ctx: CanvasRenderingContext2D, b: PictureBox, px: number) {
+  ctx.save()
+  ctx.lineWidth = 1.5 * px; ctx.strokeStyle = HOVER
+  ctx.setLineDash([6 * px, 4 * px])
+  ctx.strokeRect(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0)
+  ctx.setLineDash([])
+  const s = HANDLE_PX * px
+  for (const [x, y] of boxCorners(b)) {
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(x - s / 2, y - s / 2, s, s)
+    ctx.strokeRect(x - s / 2, y - s / 2, s, s)
+  }
+  ctx.restore()
 }
 
 function drawHover(ctx: CanvasRenderingContext2D, g: Geometry, points: Float64Array, hover: NonNullable<Hover>, px: number) {

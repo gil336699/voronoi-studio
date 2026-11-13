@@ -73,6 +73,32 @@ export function picturePlacement(p: PictureSettings): { k: number; ox: number; o
   return { k, ox: (p.sheetWidth - cols * k) / 2 + (p.offsetX ?? 0), oy: (p.sheetHeight - rows * k) / 2 + (p.offsetY ?? 0) }
 }
 
+// The picture's outline on the sheet, in mm.
+export type PictureBox = { x0: number; y0: number; x1: number; y1: number }
+export function pictureBox(p: PictureSettings): PictureBox {
+  const { k, ox, oy } = picturePlacement(p)
+  return { x0: ox, y0: oy, x1: ox + p.picture.width * k, y1: oy + p.picture.height * k }
+}
+// Corners in order round the picture: top left, top right, bottom right, bottom left.
+export const boxCorners = (b: PictureBox): [number, number][] => [[b.x0, b.y0], [b.x1, b.y0], [b.x1, b.y1], [b.x0, b.y1]]
+
+export const SCALE_RANGE: [number, number] = [10, 400]
+const round2 = (v: number) => Math.round(v * 100) / 100
+
+// Dragging a corner to x, y: the opposite corner stays put and the picture keeps its proportions. The size is
+// the drag projected onto the diagonal, in whole percent from 10 to 400 %.
+export function resizePicture(p: PictureSettings, corner: number, x: number, y: number): { scale: number; offsetX: number; offsetY: number } {
+  const corners = boxCorners(pictureBox(p))
+  const [cx, cy] = corners[corner], [ax, ay] = corners[(corner + 2) % 4]
+  const vx = cx - ax, vy = cy - ay
+  const scale0 = p.scale ?? 100
+  const along = ((x - ax) * vx + (y - ay) * vy) / Math.max(1e-12, vx * vx + vy * vy)
+  const scale = Math.min(SCALE_RANGE[1], Math.max(SCALE_RANGE[0], Math.round(scale0 * along)))
+  const f = scale / scale0
+  // The new centre is half the new diagonal from the corner that stays put.
+  return { scale, offsetX: round2(ax + (vx * f) / 2 - p.sheetWidth / 2), offsetY: round2(ay + (vy * f) / 2 - p.sheetHeight / 2) }
+}
+
 // Radii of three box blurs that together approximate a Gaussian blur of this sigma (in pixels).
 function boxRadii(sigma: number): number[] {
   const n = 3

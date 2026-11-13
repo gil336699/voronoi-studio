@@ -333,9 +333,10 @@ kbd { display: inline-block; padding: 1px 7px; border-radius: 6px; background: v
   .transport button:has(.compact-label), .floating-bar button:has(.compact-label) { width: 34px; min-width: 34px; padding: 0; }
 }
 
-/* With the Picture toggle the view bar is about 70 px wider. Where both bars would no longer fit on one row,
-   the tools shrink to their symbols, as in medium windows, instead of pushing the view bar onto a second row. */
-@container (max-width: 744px) {
+/* With a Picture gradient the view bar gains the Picture toggle and the tools gain Move picture, about 190 px
+   in all. Where both bars would no longer fit on one row (they need about 853 px), the tools shrink to their
+   symbols, as in medium windows, instead of pushing the view bar onto a second row. */
+@container (max-width: 860px) {
   .viewport-bar-row.with-picture .compact-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .viewport-bar-row.with-picture .floating-bar button:has(.compact-label) { width: 34px; min-width: 34px; padding: 0; }
 }

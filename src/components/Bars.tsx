@@ -15,12 +15,15 @@ const TOOLS: { id: Tool; label: string; icon: IconName; key: string; tip: string
   { id: 'erase', label: 'Erase', icon: 'erase', key: 'E', tip: 'Click a cell to remove it, or drag across cells to remove several.' },
   { id: 'pan', label: 'Pan', icon: 'pan', key: 'H', tip: 'Drag to move the view. Holding Space pans with any tool.' },
 ]
+// Only while the Picture gradient is on.
+const PICTURE_TOOL = { id: 'picture' as const, label: 'Move picture', icon: 'picture' as const, key: 'M', tip: 'Drag the density picture to move it, or drag a corner to resize it. Its size and place are also on the Pattern tab.' }
 
 const TOOL_CAPTION: Record<Tool, string> = {
   move: 'Drag a point to move it · Alt-click to add · Shift-click to erase · Space+drag to pan · Scroll to zoom',
   add: 'Click inside the border to add a cell · Esc for Move',
   erase: 'Click or drag across cells to remove them · Esc for Move',
   pan: 'Drag to move the view · Scroll or pinch to zoom · Esc for Move',
+  picture: 'Drag the picture to move it · Drag a corner to resize it · Esc for Move',
 }
 
 export function ViewBar({ tool, setTool, s, toggle, picture, zoom, onFit, onZoom }: {
@@ -31,7 +34,7 @@ export function ViewBar({ tool, setTool, s, toggle, picture, zoom, onFit, onZoom
   return <div className="viewport-bars">
     <div className={picture ? 'viewport-bar-row with-picture' : 'viewport-bar-row'}>
       <div className="floating-bar glass" role="toolbar" aria-label="Tools">
-        {TOOLS.map(t => <Button key={t.id} pressed={tool === t.id} tip={t.tip} shortcut={t.key} label={t.label} onClick={() => setTool(t.id)}>
+        {(picture ? [...TOOLS, PICTURE_TOOL] : TOOLS).map(t => <Button key={t.id} pressed={tool === t.id} tip={t.tip} shortcut={t.key} label={t.label} onClick={() => setTool(t.id)}>
           <Icon name={t.icon} /><span className="compact-label">{t.label}</span></Button>)}
       </div>
       <div className="floating-bar glass" role="toolbar" aria-label="Show">

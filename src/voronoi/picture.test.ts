@@ -5,7 +5,7 @@ import { relax } from './relax'
 import { createRng } from './random'
 import { seedPoints } from './seeding'
 import {
-  decodeGray, encodeGray, pictureCentroid, pictureDensityAt, pictureGrid, picturePlacement, pictureTones, sanitizePicture,
+  decodeGray, encodeGray, pictureBox, pictureCentroid, pictureDensityAt, pictureGrid, picturePlacement, pictureTones, resizePicture, sanitizePicture,
   type DensityPicture, type PictureSettings,
 } from './picture'
 import type { DensitySettings } from './density'
@@ -77,6 +77,23 @@ describe('picture density', () => {
     expect(pictureDensityAt(g, 70, 50)).toBeCloseTo(5)
     expect(pictureDensityAt(g, 30, 50)).toBeCloseTo(1)
     expect(pictureDensityAt(g, 70, 30)).toBeCloseTo(1) // above the half-height picture
+  })
+
+  it('resizes from a dragged corner, keeping the opposite corner and the proportions', () => {
+    const p = settings(picture(200, 100, () => 0), { scale: 50 }) // Fit gives 100 × 50 mm; at 50 % it's 50 × 25 mm, centred
+    const box = pictureBox(p)
+    expect(box).toEqual({ x0: 25, y0: 37.5, x1: 75, y1: 62.5 })
+    // Drag the bottom-right corner half a diagonal further out: 1.5 × 50 % = 75 %, top left still at (25, 37.5).
+    const r = resizePicture(p, 2, 100, 75)
+    expect(r.scale).toBe(75)
+    const bigger = pictureBox({ ...p, scale: r.scale, offsetX: r.offsetX, offsetY: r.offsetY })
+    expect(bigger.x0).toBeCloseTo(25, 2); expect(bigger.y0).toBeCloseTo(37.5, 2)
+    expect(bigger.x1 - bigger.x0).toBeCloseTo(75, 2); expect(bigger.y1 - bigger.y0).toBeCloseTo(37.5, 2)
+    // Dragging past the corner that stays put stops at 10 %, still anchored there.
+    const tiny = resizePicture(p, 0, 90, 90)
+    expect(tiny.scale).toBe(10)
+    const small = pictureBox({ ...p, scale: tiny.scale, offsetX: tiny.offsetX, offsetY: tiny.offsetY })
+    expect(small.x1).toBeCloseTo(75, 2); expect(small.y1).toBeCloseTo(62.5, 2)
   })
 
   it('makes the darkest pixel the full strength and white paper 1, or the reverse when inverted', () => {
