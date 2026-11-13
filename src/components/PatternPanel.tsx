@@ -4,6 +4,8 @@ import { formatLength } from '../lib/units'
 import { Button, DraftNumber, LengthField, NumberField, Section, Segmented, SliderField, SwitchField, type Option } from './Controls'
 import type { Placement } from '../voronoi/seeding'
 import type { DensityMode } from '../voronoi/density'
+import type { PictureFit } from '../voronoi/picture'
+import { PICTURE_TYPES } from '../lib/pictureFile'
 
 export type Change = (patch: Partial<Settings>, key?: string) => void
 
@@ -23,17 +25,26 @@ const DENSITIES: Option<DensityMode>[] = [
   { value: 'none', label: 'None', tip: 'Cells are about the same size everywhere.' },
   { value: 'linear', label: 'Linear', tip: 'Cells get smaller toward one side of the sheet.' },
   { value: 'radial', label: 'Radial', tip: 'Cells get smaller toward the centre, or toward the edge.' },
+  { value: 'picture', label: 'Picture', tip: `Cells get smaller where a picture is dark, or where it’s light. Use a ${PICTURE_TYPES} file.` },
 ]
+const FITS: Option<PictureFit>[] = [
+  { value: 'fit', label: 'Fit', tip: 'Show the whole picture, centred. Around it counts as white paper.' },
+  { value: 'fill', label: 'Fill', tip: 'Cover the whole sheet, centred, cutting off what doesn’t fit.' },
+]
+const size = (w: number, h: number) => `${w.toLocaleString()} × ${h.toLocaleString()} px`
 
 // Memoised: the panel only re-renders when its own props change, not on every relax step.
-export const PatternPanel = memo(function PatternPanel({ s, change, stale, onApply, actualCount, autoSpacingValue, exactSpacing, capped, onShuffle }: {
+export const PatternPanel = memo(function PatternPanel({ s, change, stale, onApply, actualCount, autoSpacingValue, exactSpacing, capped, onShuffle, onChoosePicture }: {
   s: Settings; change: Change; stale: boolean; onApply: () => void; actualCount: number; autoSpacingValue: number
-  exactSpacing: () => number; capped: boolean; onShuffle: () => void
+  exactSpacing: () => number; capped: boolean; onShuffle: () => void; onChoosePicture: () => void
 }) {
   const grid = s.placement === 'hex' || s.placement === 'square'
   const spacingOff = s.placement === 'random' && 'Random placement has no spacing to set.'
   const countLocked = !s.autoSpacing && s.placement !== 'random' && 'The spacing sets the count. Turn on Auto spacing to choose a count instead.'
   const densityOff = grid && 'Gradients work with Random and Even placement. Grids stay regular.'
+  const pic = s.densityPicture
+  // Picture without a picture yet asks for one first, and switches once it's read.
+  const pickDensity = (density: DensityMode) => (density === 'picture' && !pic ? onChoosePicture() : change({ density }, 'density'))
   return <>
     {stale && <div className="notice" role="status">
       <p>You edited points by hand, so changed pattern settings aren't applied yet.</p>
@@ -83,15 +94,33 @@ export const PatternPanel = memo(function PatternPanel({ s, change, stale, onApp
     </Section>
 
     <Section title="Density gradient">
-      <Segmented label="Gradient" hideLabel options={DENSITIES} value={s.density} unavailable={densityOff} onChange={density => change({ density }, 'density')} />
+      <Segmented label="Gradient" hideLabel options={DENSITIES} value={s.density} unavailable={densityOff} onChange={pickDensity} />
       {densityOff ? <p className="hint">{densityOff}</p> : s.density !== 'none' && <>
+        {s.density === 'picture' && (pic
+          ? <div className="picture-file">
+            <p className="hint"><b>{pic.name}</b>: {size(pic.sourceWidth, pic.sourceHeight)}
+              {pic.sourceWidth !== pic.width ? `, used at ${size(pic.width, pic.height)}` : ''}.</p>
+            <Button tip={`Use a different picture: ${PICTURE_TYPES}. You can also drop one on the window.`} onClick={onChoosePicture}>Replace…</Button>
+          </div>
+          : <Button className="primary wide" tip={`Choose a ${PICTURE_TYPES} file. You can also drop one on the window.`} onClick={onChoosePicture}>Choose picture…</Button>)}
         <SliderField label="Strength" value={s.densityStrength} min={RANGES.densityStrength[0]} max={RANGES.densityStrength[1]} step={0.5}
-          format={v => `${v}×`} tip="How many times smaller in area the smallest cells are than the largest." onChange={densityStrength => change({ densityStrength }, 'densityStrength')} />
-        {s.density === 'linear'
-          ? <SliderField label="Direction" value={s.densityAngle} min={0} max={355} step={5} format={v => `${v}°`}
-            tip="Cells get smaller toward this direction. 0° is right, 90° is up." onChange={densityAngle => change({ densityAngle }, 'densityAngle')} />
-          : <Segmented label="Small cells at" value={s.densityInvert ? 'edge' : 'centre'} onChange={v => change({ densityInvert: v === 'edge' }, 'densityInvert')}
-            options={[{ value: 'centre', label: 'Centre', tip: 'The smallest cells gather in the middle.' }, { value: 'edge', label: 'Edge', tip: 'The smallest cells gather around the edge.' }]} />}
+          format={v => `${v}×`} tip={s.density === 'picture' ? 'How many times smaller in area the cells in the darkest part are than in white.' : 'How many times smaller in area the smallest cells are than the largest.'}
+          onChange={densityStrength => change({ densityStrength }, 'densityStrength')} />
+        {s.density === 'linear' && <SliderField label="Direction" value={s.densityAngle} min={0} max={355} step={5} format={v => `${v}°`}
+          tip="Cells get smaller toward this direction. 0° is right, 90° is up." onChange={densityAngle => change({ densityAngle }, 'densityAngle')} />}
+        {s.density === 'radial' && <Segmented label="Small cells at" value={s.densityInvert ? 'edge' : 'centre'} onChange={v => change({ densityInvert: v === 'edge' }, 'densityInvert')}
+          options={[{ value: 'centre', label: 'Centre', tip: 'The smallest cells gather in the middle.' }, { value: 'edge', label: 'Edge', tip: 'The smallest cells gather around the edge.' }]} />}
+        {s.density === 'picture' && <>
+          <Segmented label="Small cells at" value={s.pictureInvert ? 'light' : 'dark'} onChange={v => change({ pictureInvert: v === 'light' }, 'pictureInvert')}
+            options={[{ value: 'dark', label: 'Dark', tip: 'Dark parts of the picture get the smallest cells, like ink.' }, { value: 'light', label: 'Light', tip: 'Light parts of the picture get the smallest cells.' }]} />
+          <SliderField label="Contrast" value={s.pictureContrast} min={RANGES.pictureContrast[0]} max={RANGES.pictureContrast[1]} step={5}
+            format={v => `${v > 0 ? '+' : ''}${v} %`} tip="Spread the mid-greys apart for a bolder pattern, or bring them together for a gentler one. The darkest and lightest parts are always stretched to black and white."
+            onChange={pictureContrast => change({ pictureContrast }, 'pictureContrast')} />
+          <LengthField label="Softness" mm={s.pictureSoftness} min={RANGES.pictureSoftness[0]} max={RANGES.pictureSoftness[1]} units={s.units} dpi={s.dpi} small
+            tip="Blur the picture by about this distance first. Softens hard edges, and turns line drawings into cells that shrink near the lines."
+            onChange={pictureSoftness => change({ pictureSoftness }, 'pictureSoftness')} />
+          <Segmented label="Picture size" options={FITS} value={s.pictureFit} onChange={pictureFit => change({ pictureFit }, 'pictureFit')} />
+        </>}
       </>}
     </Section>
 

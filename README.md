@@ -1,6 +1,6 @@
 # Voronoi Studio
 
-Voronoi Studio is a browser app for designing Voronoi patterns to make things with. Pick a sheet size and shape, or import your own outline from an SVG, choose how many cells and how they're placed, shape them with gradients and relaxation, and drag, add or erase cells by hand. Then export them at real size: a laser-ready SVG or a DXF for cutting, or an SVG or PNG for artwork. It rebuilds and extends Gil's Voronoi Lab.
+Voronoi Studio is a browser app for designing Voronoi patterns to make things with. Pick a sheet size and shape, or import your own outline from an SVG, choose how many cells and how they're placed, shape them with gradients (including one from your own photo or drawing) and relaxation, and drag, add or erase cells by hand. Then export them at real size: a laser-ready SVG or a DXF for cutting, or an SVG or PNG for artwork. It rebuilds and extends Gil's Voronoi Lab.
 
 **Use it online:** https://gil336699.github.io/voronoi-studio/
 
@@ -8,7 +8,7 @@ Voronoi Studio is a browser app for designing Voronoi patterns to make things wi
 
 [Watch the demo as a video](https://github.com/gil336699/voronoi-studio/releases/download/v1.1.0/voronoi-studio-demo.mp4) (MP4, 1920 × 1200, 22 seconds).
 
-Everything runs in your browser. Your designs and files stay on your computer.
+Everything runs in your browser. Your designs, files and pictures stay on your computer.
 
 ## Run
 
@@ -33,7 +33,7 @@ The sheet fills the window, and the controls float above it on translucent glass
 
 - **Top left.** The app name and the **?** button for shortcuts and the quick start.
 - **Left panel.** Four tabs: **Pattern** (cells, placement, gradient, relaxation), **Sheet** (size, units, shape or imported outline, border), **Style** (Lines or Holes, colours) and **File** (project and exports). A dot on Pattern means hand edits are holding back new settings; a dot on File means unsaved changes.
-- **Above the sheet.** Tools (Move, Add, Erase, Pan) on the left. Sites, Edges or Holes, Delaunay, and zoom on the right. A caption explains the current tool.
+- **Above the sheet.** Tools (Move, Add, Erase, Pan) on the left. Sites, Edges or Holes, Delaunay, Picture (with a Picture gradient), and zoom on the right. A caption explains the current tool.
 - **Below the sheet.** The action dock: **Generate**, **Relax**, **Auto-relax**, the status, and Undo and Redo.
 - **Right panel.** **Measurements**: sheet size, cells, holes, average cell size, evenness, the narrowest hole or shortest edge, and total cut length.
 
@@ -48,7 +48,7 @@ Narrower windows show tool and action buttons as symbols only. On tablets the sh
 ## Workflow
 
 1. **Sheet.** Choose a preset such as a 200 mm tile, A4, a 12 × 12 in laser sheet or a Ø 100 mm coaster, or type a size. Choose Rectangle or Ellipse and a border. Or press **Import SVG shape…**, or drop an SVG on the window, to fill your own outline; outlines inside it become holes.
-2. **Pattern.** Set the number of cells and the placement. Add a density gradient for cells that get smaller toward one side, the centre or the edge.
+2. **Pattern.** Set the number of cells and the placement. Add a density gradient for cells that get smaller toward one side, the centre or the edge, or where a picture of yours is dark: choose **Picture**, or drop a photo on the window.
 3. **Relax.** New patterns get a few relaxation steps. Press **Relax** for more, or **Auto-relax** to keep going until you stop it. While it's on, change the cell count, placement, gradient or sheet and watch the new pattern relax, or drag a point and watch the cells around it follow; the point stays under the pointer until you let go. Once the points settle it waits for your next change. Stop, Undo, Redo, New and Open turn it off.
 4. **Edit by hand.** Drag points to move cells, Alt-click (or the Add tool) to add one, Shift-click (or the Erase tool) to remove one. Once points are edited by hand, pattern settings wait for **Apply settings…** so your edits aren't lost by accident.
 5. **Style.** **Lines** draws each edge once. **Holes** cuts each cell out, leaving a web of material, with rounded corners and a smallest-hole limit.
@@ -92,8 +92,35 @@ Where a cell wraps right round a hole in the shape, the app leaves a bridge of w
 | None | Cells are about the same size everywhere. |
 | Linear | Cells get smaller toward a direction (0° is right, 90° is up). |
 | Radial | Cells get smaller toward the centre, or toward the edge. |
+| Picture | Cells get smaller where a picture is dark, or where it's light. |
 
 **Strength** is how many times smaller in area the smallest cells are than the largest. Relaxation keeps the gradient.
+
+### Picture gradient
+
+Choose **Picture**, or drop a picture on the window, and the cells follow it: small where it's dark, large where it's white. A faint copy shows behind the cells; the **Picture** button above the sheet, or key 4, hides it.
+
+| File type | How it opens |
+| --- | --- |
+| JPG, PNG, WebP, AVIF, GIF (first frame), BMP, ICO | The browser decodes it. Phone photos are turned upright from their EXIF orientation. |
+| HEIC and HEIF (iPhone photos) | Safari decodes it. Elsewhere the app loads a HEIC decoder (libheif, about 0.8 MB compressed) the first time one is opened. |
+| TIFF (8 or 16 bit, uncompressed, LZW or Deflate) | Safari decodes it. Elsewhere the app loads UTIF and its inflater (about 40 kB compressed). A TIFF with several pages uses the largest. |
+| SVG | Drawn as a picture. Dropping an SVG asks whether it's the sheet shape or the density picture. |
+| JPEG XL | Only where the browser reads it, such as Safari. |
+
+Photoshop files and PDFs aren't read; the app says to export a JPG or PNG. Transparent parts, and the paper around a fitted picture, count as white.
+
+| Control | Effect |
+| --- | --- |
+| Strength | How many times smaller in area the cells in the darkest part are than in white (1–20×). At 20× cells are about 4.5× narrower. |
+| Small cells at | Dark parts get the small cells, like ink, or light parts do. |
+| Contrast | Spreads the mid-greys apart (up to +100 %) or brings them together (down to −100 %). The darkest and lightest parts are always stretched to black and white first. |
+| Softness | Blurs the picture by about this distance first: softens hard edges, and turns a line drawing into cells that shrink near its lines. |
+| Picture size | **Fit** shows the whole picture, centred; **Fill** covers the sheet, cutting off what doesn't fit. |
+
+The picture is kept in the project at up to 512 × 512 pixels in grey, about 260 kB, so a project opens with the same picture and the same pattern anywhere. Pattern settings, including the picture, wait for **Apply settings…** after hand edits, like the other gradients.
+
+What to expect: a cut sheet has to be covered with cells, so white gets the largest cells, not none, and the picture reads as a soft halftone. Logos, lettering, silhouettes and high-contrast photos read best. Gil's test portrait reads well at 3,000 cells as Holes and at 5,000 as Lines, at 16×.
 
 ### Exports
 
@@ -101,11 +128,11 @@ Where a cell wraps right round a hole in the shape, the app leaves a bridge of w
 | --- | --- | --- |
 | Laser SVG | 0.025 mm hairlines with no fill. Cuts in red: holes or cell edges in group `cut-inner` (with an imported shape's own holes), the sheet outline in `cut-outer`. When shown, sites as green circles in `sites` and Delaunay lines in magenta in `delaunay`. Marks first, then inner cuts, then the outline. | mm, or in for inch sheets |
 | DXF | AutoCAD R12 text. Holes as closed polylines whose rounded corners are true arcs, lines as LINE, round sheets as CIRCLE, imported outlines as polylines. Layers `CUT_INNER` (red) and `CUT_OUTER` (blue); when shown, sites as CIRCLE on `SITES` (green) and Delaunay lines as LINE on `DELAUNAY` (magenta). | mm, or in for inch sheets |
-| SVG | The design as shown: colours, line width, fill, background, sites and Delaunay lines if visible. | mm, in, or px for pixel sheets |
-| PNG | The design at the sheet's pixels per inch, optionally with a transparent background. | px |
-| Project | Settings, every point and any imported shape, as `.voronoi.json` (schema `voronoi-studio/project`, version 2; version 1 files open too). | mm |
+| SVG | The design as shown: colours, line width, fill, background, sites and Delaunay lines if visible, and the density picture in group `picture` if shown. | mm, in, or px for pixel sheets |
+| PNG | The design at the sheet's pixels per inch, with the density picture if shown, optionally with a transparent background. | px |
+| Project | Settings, every point, any imported shape and any density picture, as `.voronoi.json` (schema `voronoi-studio/project`, version 3; versions 1 and 2 open too). | mm |
 
-Every export holds what the view shows: the **Sites**, **Edges** or **Holes**, and **Delaunay** buttons above the sheet decide what goes in, so turn Sites off for a file with only cuts. The File tab lists what a cut file will hold. Cut files contain each line once, so a laser never cuts the same edge twice, and leave out cuts shorter than 5 µm, which a laser would only fire as a dot. Exports always show the whole sheet, whatever the zoom.
+Every export holds what the view shows: the **Sites**, **Edges** or **Holes**, and **Delaunay** buttons above the sheet decide what goes in, so turn Sites off for a file with only cuts. The density picture goes in the SVG and PNG when shown, but never in Laser SVG or DXF, where laser software would engrave it. The File tab lists what a cut file will hold. Cut files contain each line once, so a laser never cuts the same edge twice, and leave out cuts shorter than 5 µm, which a laser would only fire as a dot. Exports always show the whole sheet, whatever the zoom.
 
 ## Controls
 
@@ -127,7 +154,9 @@ Every export holds what the view shows: the **Sites**, **Edges** or **Holes**, a
 | Web width, Corner radius, Smallest hole | Holes only: material between holes, corner rounding, and the narrowest hole kept. |
 | Line width, colours, fill | Appearance in the preview, PNG and artwork SVG. Laser files always use hairlines. |
 | Include the sheet outline | Adds the sheet edge as the outer cut in Laser SVG and DXF. |
-| Sites, Edges or Holes, Delaunay | Show or hide each part of the design, in the view and in every export. |
+| Gradient, Strength, Direction, Small cells at | The density gradient: None, Linear, Radial or Picture, how strong it is and which way it runs. |
+| Choose picture…, Replace…, Contrast, Softness, Picture size | The Picture gradient's picture and how it's read (see Picture gradient above). |
+| Sites, Edges or Holes, Delaunay, Picture | Show or hide each part of the design, in the view and in every export (the picture stays out of cut files). |
 
 ## Keyboard shortcuts
 
@@ -141,7 +170,7 @@ Every export holds what the view shows: the **Sites**, **Edges** or **Holes**, a
 | Alt-click, Shift-click | Add a cell, erase a cell |
 | Scroll, pinch | Zoom |
 | +, −, F | Zoom in, out, fit |
-| 1, 2, 3 | Sites, edges or holes, Delaunay |
+| 1, 2, 3, 4 | Sites, edges or holes, Delaunay, picture |
 | ⌘Z, ⇧⌘Z | Undo, redo |
 | ⌘S, ⌘O | Save, open project |
 | Esc | Close a dialog, or go back to Move |
@@ -154,12 +183,13 @@ On Windows and Linux, use Ctrl for ⌘. Space pans, as in most design tools, rat
 - **Cells.** [d3-delaunay](https://github.com/d3/d3-delaunay) builds the Delaunay triangulation and Voronoi cells, clipped to the pattern area. Ellipses are clipped against a 256-sided polygon, so a cell edge on the rim is within 0.008 % of the radius of the true ellipse.
 - **Even placement** uses Bridson's Poisson-disk sampling with a spacing that varies with the gradient. For a set count it tightens the spacing until there are enough points, then drops the extra few at random.
 - **Relaxation** is Lloyd's method: each point moves to the centre of its cell. With a gradient the centre is weighted by the density squared, which is what keeps the gradient through hundreds of steps. Auto-relax counts the points as settled, and waits, when no point moves more than 1/2,000 of the typical spacing in a step.
+- **Picture gradient.** The picture is reduced to at most 512 pixels a side and turned grey by brightness (Rec. 709). Its darkest pixel becomes black and its lightest white, then Contrast, Softness (a three-pass box blur close to a Gaussian) and Small cells at give each pixel a tone from 0 to 1, and its density is Strength to the power of the tone. Relaxing weights each cell's centre by the density squared, as for the other gradients, but integrates it exactly over the picture's pixels instead of sampling it: by Green's theorem, each cell's weight and centre come from running sums along the pixel rows, taken around its outline (Secord, *Weighted Voronoi Stippling*, 2002). So sharp edges in the picture stay sharp and the points settle. On a white-to-black ramp at 9×, 2,000 relaxed cells come within 3 % of the expected count in every tenth of the width.
 - **Holes.** Each cell is convex, so it is shrunk by half the web plus the corner radius, then grown back by the radius with arcs. That gives exact round corners with no self-intersections. Small cells get the largest radius that fits.
 - **Imported shapes.** [Clipper2](https://github.com/PolyClipping/Clipper2), through [clipper2-ts](https://github.com/countertype/clipper2-ts), merges the outlines (even-odd), shrinks them by the border with round corners, and clips the cells that cross the outline. A grid of the outline's edges makes "is this point inside?" fast enough for Poisson-disk sampling. Cells wholly inside keep the exact method above; clipped cells can be concave, so their holes come from Clipper's offsets, with rounded corners drawn as short segments within 5 µm.
 - **Determinism.** A seeded random generator (mulberry32) makes every pattern repeatable from its seed and settings.
 - **Background work.** Making and relaxing points runs in a Web Worker, so the page stays responsive.
 
-**Limits of the method.** The ellipse is a polygon in cut files except for true circles, which DXF writes as CIRCLE. Imported outlines, and the rounded corners of holes clipped by them, are short straight segments rather than true arcs. For those clipped holes, the narrowest-hole reading is measured across the hole's convex outline, so it can read slightly wide for a concave hole; the smallest-hole limit itself is exact. Very short cell edges can remain between nearly square groups of four points; relaxing lengthens them, and Holes style rounds them away. Gradients don't apply to grid placements.
+**Limits of the method.** The ellipse is a polygon in cut files except for true circles, which DXF writes as CIRCLE. Imported outlines, and the rounded corners of holes clipped by them, are short straight segments rather than true arcs. For those clipped holes, the narrowest-hole reading is measured across the hole's convex outline, so it can read slightly wide for a concave hole; the smallest-hole limit itself is exact. Very short cell edges can remain between nearly square groups of four points; relaxing lengthens them, and Holes style rounds them away. Gradients don't apply to grid placements. A picture keeps at most 512 pixels a side, so detail finer than about a 500th of the sheet is lost.
 
 ## Known limits
 
@@ -177,12 +207,25 @@ Measured on an Apple-silicon Mac, in the app (Chrome, Code tab preview, 1280 × 
 | Imported shape, holes: rebuild (Node, 296 × 160 mm pill with a hole) | 6–9 ms | 12–16 ms | 81–95 ms (5,000 cells) |
 | Imported shape, holes: one update while dragging (app) | — | 28.5 ms median, 39 ms at the 90th percentile | — |
 
+Picture gradient, measured on the production build in headless Chrome:
+
+| Task | Result |
+| --- | --- |
+| Open a picture: JPG, PNG, WebP, AVIF, GIF, BMP, TIFF, SVG | 30–130 ms; a 48-megapixel PNG 0.2 s; an 11 MB BMP 0.1 s |
+| Open an iPhone HEIC in Chrome (decoder loads the first time) | 12 megapixels 1.5 s, 24 megapixels 3.1 s; the page keeps responding (longest task 174 ms) |
+| Auto-relax speed, Lines, 2,500 cells | no gradient 50.9, Radial 48.2, Picture 43.7 steps/s |
+| Auto-relax speed, Lines, 10,000 cells | no gradient 37.1, Radial 32.2, Picture 29.5 steps/s |
+| Portrait as a Holes panel, 3,000 holes at 16× | settled after 1,238 steps, 29 s; laser SVG 0.92 MB, DXF 2.34 MB |
+| Ramp, white to black, 2,000 cells at 9×, relaxed | every tenth of the width within 3 % of the expected count |
+| Two minutes of picture changes while Auto-relaxing | 44.0 → 42.9 steps/s, memory flat, the session copy at most 2 s old |
+
 Patterns up to a few thousand cells stay smooth. With Auto-relax on while you drag the Cells slider, it kept relaxing at 45 steps/s with nearly 3,900 cells (production build, headless Chrome). At 10,000 cells, editing by hand and auto-relaxing are slow; set the relax steps and press Relax instead.
 
 - Up to 10,000 cells can be typed; spacing-driven placements stop at 20,000 points.
 - PNG export is limited to 16,384 px a side and 120 megapixels, which browsers can draw. Use SVG for larger work.
 - Cut files are not reordered to shorten laser travel.
-- The live design is kept in the browser's local storage; clearing site data removes it. Save a project file to keep work.
+- The live design is kept in the browser's local storage; clearing site data removes it. Save a project file to keep work. A density picture adds about 260 kB to it.
+- Photoshop files, PDFs and camera raw files can't be used as pictures; export a JPG or PNG. JPEG XL opens only where the browser reads it.
 
 ## Development
 
@@ -199,8 +242,8 @@ src/
   App.tsx              layout, files and keyboard shortcuts
   useDesign.ts         the design state: undo, unsaved changes, worker jobs, auto-relax
   components/          panels, bars, stage (canvas and pointer input), tooltip, tabs, modal, icons
-  lib/                 settings, units, presets, project files, history, rendering, SVG import and export, DXF, change rules
-  voronoi/             the engine, free of React: geometry, regions, imported shapes, seeding, density, diagram, relaxation, holes
+  lib/                 settings, units, presets, project files, history, rendering, SVG import and export, DXF, change rules, picture files
+  voronoi/             the engine, free of React: geometry, regions, imported shapes, seeding, density, pictures, diagram, relaxation, holes
   worker/              the Web Worker and its client
   *.test.ts            tests sit next to the code they test
 test-fixtures/         a sample project and SVG shapes the tests open
@@ -212,4 +255,6 @@ local/                 QA probes and scratch files, not committed
 
 MIT. See [LICENSE](LICENSE).
 
-Voronoi Studio uses [d3-delaunay](https://github.com/d3/d3-delaunay) (ISC) and [clipper2-ts](https://github.com/countertype/clipper2-ts), a port of Angus Johnson's Clipper2 (Boost Software License 1.0).
+Voronoi Studio uses [d3-delaunay](https://github.com/d3/d3-delaunay) (ISC) and [clipper2-ts](https://github.com/countertype/clipper2-ts), a port of Angus Johnson's Clipper2 (Boost Software License 1.0). To open TIFF pictures it uses [UTIF.js](https://github.com/photopea/UTIF.js) (MIT) with [pako](https://github.com/nodeca/pako) (MIT and Zlib).
+
+To open HEIC pictures in browsers that can't, it uses [heic-to](https://github.com/hoppergee/heic-to), which contains [libheif](https://github.com/strukturag/libheif) and [libde265](https://github.com/strukturag/libde265). All three are under the GNU Lesser General Public License 3.0. They are unmodified and ship as their own file (`assets/heic-to-*.js`), loaded only when a HEIC picture is opened, so you can replace that file with your own build. Their source is at the links above. Every third-party licence ships with the app as [`third-party-licenses.txt`](public/third-party-licenses.txt) (also on the [live site](https://gil336699.github.io/voronoi-studio/third-party-licenses.txt)). The rest of Voronoi Studio stays under MIT.

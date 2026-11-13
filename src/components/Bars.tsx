@@ -23,13 +23,13 @@ const TOOL_CAPTION: Record<Tool, string> = {
   pan: 'Drag to move the view · Scroll or pinch to zoom · Esc for Move',
 }
 
-export function ViewBar({ tool, setTool, s, toggle, zoom, onFit, onZoom }: {
+export function ViewBar({ tool, setTool, s, toggle, picture, zoom, onFit, onZoom }: {
   tool: Tool; setTool: (tool: Tool) => void; s: Settings
-  toggle: (key: 'showSites' | 'showEdges' | 'showDelaunay') => void; zoom: number; onFit: () => void; onZoom: (factor: number) => void
+  toggle: (key: 'showSites' | 'showEdges' | 'showDelaunay' | 'showPicture') => void; picture: boolean; zoom: number; onFit: () => void; onZoom: (factor: number) => void
 }) {
   const edgeName = s.cellStyle === 'holes' ? 'Holes' : 'Edges'
   return <div className="viewport-bars">
-    <div className="viewport-bar-row">
+    <div className={picture ? 'viewport-bar-row with-picture' : 'viewport-bar-row'}>
       <div className="floating-bar glass" role="toolbar" aria-label="Tools">
         {TOOLS.map(t => <Button key={t.id} pressed={tool === t.id} tip={t.tip} shortcut={t.key} label={t.label} onClick={() => setTool(t.id)}>
           <Icon name={t.icon} /><span className="compact-label">{t.label}</span></Button>)}
@@ -38,6 +38,7 @@ export function ViewBar({ tool, setTool, s, toggle, zoom, onFit, onZoom }: {
         <Button pressed={s.showSites} shortcut="1" tip="Show or hide the points (sites) at the heart of each cell." onClick={() => toggle('showSites')}>Sites</Button>
         <Button pressed={s.showEdges} shortcut="2" tip={`Show or hide the cell ${edgeName.toLowerCase()}.`} onClick={() => toggle('showEdges')}>{edgeName}</Button>
         <Button pressed={s.showDelaunay} shortcut="3" tip="Show or hide the Delaunay triangulation, the lines joining neighbouring points." onClick={() => toggle('showDelaunay')}>Delaunay</Button>
+        {picture && <Button pressed={s.showPicture} shortcut="4" tip="Show or hide the density picture behind the cells. It’s in the PNG and artwork SVG too; laser SVG and DXF files leave it out." onClick={() => toggle('showPicture')}>Picture</Button>}
         <span className="bar-divider" aria-hidden="true" />
         <Button className="icon-button zoom-step" label="Zoom out" shortcut="−" tip="Zoom out." onClick={() => onZoom(1 / 1.25)}><Icon name="minus" /></Button>
         <Button className="zoom-readout" shortcut="F" tip="Fit the whole sheet in the window." label={`Zoom ${Math.round(zoom * 100)} percent. Fit to window`} onClick={onFit}>{Math.round(zoom * 100)}%</Button>

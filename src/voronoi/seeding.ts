@@ -1,6 +1,6 @@
 // Where the first points go. Four placements: random, even (Poisson-disk), hex grid and square grid.
 // All of them are seeded, so the same settings and seed give the same points.
-import { densityField, integrateDensity, type DensitySettings } from './density'
+import { densityField, densityPeak, integrateDensity, type DensitySettings } from './density'
 import { createRng, type Rng } from './random'
 import { clampToRegion, contains, regionArea, regionHeight, regionWidth, type Region } from './region'
 
@@ -40,7 +40,7 @@ export function typicalSpacing(region: Region, count: number): number {
 
 function randomPoints(count: number, region: Region, density: DensitySettings, rng: Rng): Float64Array {
   const field = densityField(density, region)
-  const top = Math.max(1, density.mode === 'none' ? 1 : density.strength)
+  const top = densityPeak(density)
   const out = new Float64Array(count * 2)
   const w = regionWidth(region), h = regionHeight(region)
   let n = 0
@@ -56,7 +56,7 @@ function randomPoints(count: number, region: Region, density: DensitySettings, r
 // Bridson's Poisson-disk sampling with a spacing that can vary across the sheet.
 export function poissonDisk(region: Region, spacing: number, tries: number, density: DensitySettings, rng: Rng, limit = MAX_POINTS): SeedResult {
   const field = densityField(density, region)
-  const top = Math.max(1, density.mode === 'none' ? 1 : density.strength)
+  const top = densityPeak(density)
   const radius = (x: number, y: number) => spacing / Math.sqrt(field(x, y))
   const rMin = spacing / Math.sqrt(top), rMax = spacing
   const cell = rMin / Math.SQRT2

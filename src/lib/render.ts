@@ -4,6 +4,7 @@ import type { Segment } from '../voronoi/geometry'
 import { arcFromBulge, type Outline } from '../voronoi/holes'
 import type { Geometry } from '../voronoi/pattern'
 import { regionCenter, regionHeight, regionWidth, type Region } from '../voronoi/region'
+import { PICTURE_OPACITY, pictureCanvas, shownPicture } from './pictureLayer'
 import { DELAUNAY_COLOR, SITE_COLOR, siteRadius } from './style'
 import type { Settings } from './settings'
 
@@ -69,22 +70,39 @@ export function drawDesign(ctx: CanvasRenderingContext2D, g: Geometry, points: F
   ctx.lineCap = many ? 'butt' : 'round'; ctx.lineJoin = 'round'
   const lineWidth = Math.max(s.lineWidth, minLine)
 
+  // The picture guide goes over any fill and under the lines. Drawing it doesn't touch the current path.
+  const shown = shownPicture(s)
+  const drawPicture = () => {
+    const canvas = shown && pictureCanvas(shown.tones, shown.invert)
+    if (!shown || !canvas) return
+    const { ox, oy, k, cols, rows } = shown.tones
+    ctx.save()
+    ctx.globalAlpha = PICTURE_OPACITY
+    // Enlarged pixels stay square, so the guide shows exactly what sets the cell sizes.
+    ctx.imageSmoothingEnabled = k * o.scale * o.dpr < 1
+    ctx.drawImage(canvas, ox, oy, cols * k, rows * k)
+    ctx.restore()
+  }
+
   if (s.showEdges) {
     ctx.strokeStyle = s.lineColor; ctx.lineWidth = lineWidth; ctx.fillStyle = s.fillColor
     if (s.cellStyle === 'holes') {
       // One path per hole: browsers slow down sharply on a single path with tens of thousands of arcs.
+      if (shown && s.fill) for (const hole of g.holes) { ctx.beginPath(); outlinePath(ctx, hole.outline); ctx.fill() }
+      drawPicture()
       for (const hole of g.holes) {
         ctx.beginPath(); outlinePath(ctx, hole.outline)
-        if (s.fill) ctx.fill()
+        if (s.fill && !shown) ctx.fill()
         ctx.stroke()
       }
     } else {
       ctx.beginPath(); regionPath(ctx, g.region)
       if (s.fill) ctx.fill('evenodd')
+      drawPicture()
       segmentsPath(ctx, g.edges.internal)
       ctx.stroke()
     }
-  }
+  } else drawPicture()
 
   if (s.showDelaunay && g.delaunay.length) {
     ctx.beginPath(); segmentsPath(ctx, g.delaunay)

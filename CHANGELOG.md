@@ -1,5 +1,15 @@
 # Voronoi Studio Changelog
 
+## 1.5.0 2026-11-13
+
+- **Picture gradient.** Choose **Picture** under Density gradient, or drop a picture on the window, and the cells follow it: small where it's dark, large where it's white, or the other way round. JPG, PNG, HEIC and HEIF from iPhones, TIFF (8 or 16 bit, LZW or Deflate), WebP, AVIF, GIF, BMP, ICO and SVG all open. Chrome, Edge and Firefox can't read HEIC or TIFF, so the app loads a decoder the first time you open one: a 12-megapixel iPhone photo takes about 1.5 s. Phone photos are turned upright. Photoshop files and PDFs get a message saying to export a JPG or PNG.
+- **Contrast**, **Softness** and **Fit** or **Fill** tune how the picture is read. Softness also turns a line drawing into cells that shrink near its lines.
+- **Exact centres.** Relaxing weighs each cell exactly over the picture's pixels, as in Secord's weighted Voronoi stippling, so sharp edges stay sharp and the points settle. On a white-to-black ramp at 9×, 2,000 relaxed cells were within 3 % of the expected count across the whole width.
+- **Picture guide.** A faint copy of the picture shows behind the cells. The new **Picture** button above the sheet, or key 4, hides it. It goes into the PNG and the artwork SVG, never into Laser SVG or DXF.
+- **Saved with the design.** Projects keep the picture, in grey at up to 512 pixels a side (about 260 kB), so they reopen with the same pattern. They're now version 3; older projects open as before.
+- Dropping an SVG now asks whether it's the sheet shape or the density picture. Before, it always became the sheet shape.
+- Other patterns are unchanged: 270 of 270 test configurations give the same points as 1.4.1.
+
 ## 1.4.1 2026-11-10
 
 - Fixed: while Auto-relax ran, the copy of the design kept in the browser wasn't updated, so a reload or a crash brought back the design from before Auto-relax started. In testing, a reload lost a new cell count and an added cell. The copy is now updated at least every 2 seconds while the points move, and when the tab closes or is hidden.

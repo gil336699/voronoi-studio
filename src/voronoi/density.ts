@@ -1,14 +1,32 @@
 // Density gradients: where cells should be smaller. Density runs from 1 (largest cells) up to the
 // strength (cells that many times smaller in area). It changes geometrically, so cell sizes step evenly.
+// Linear and radial gradients follow the pattern area; a picture follows the sheet (see picture.ts).
+import { pictureDensityAt, pictureGrid, type PictureGrid, type PictureSettings } from './picture'
 import { regionArea, regionCenter, regionHeight, regionWidth, type Region } from './region'
 
-export type DensityMode = 'none' | 'linear' | 'radial'
-export type DensitySettings = { mode: DensityMode; strength: number; angle: number; invert: boolean }
+export type DensityMode = 'none' | 'linear' | 'radial' | 'picture'
+// picture: set when the mode is 'picture' and a picture is loaded.
+export type DensitySettings = { mode: DensityMode; strength: number; angle: number; invert: boolean; picture?: PictureSettings | null }
 export type DensityField = (x: number, y: number) => number
+
+// Whether the density is the same everywhere, as with no gradient, strength 1, or Picture with none loaded.
+export function uniformDensity(settings: DensitySettings): boolean {
+  return settings.mode === 'none' || settings.strength <= 1 || (settings.mode === 'picture' && !settings.picture)
+}
+
+// The highest density anywhere, for rejection sampling.
+export const densityPeak = (settings: DensitySettings) => (uniformDensity(settings) ? 1 : settings.strength)
+
+// The picture's density grid, or null for the other gradients.
+export function densityPicture(settings: DensitySettings): PictureGrid | null {
+  return settings.mode === 'picture' && settings.picture && !uniformDensity(settings) ? pictureGrid(settings.picture, settings.strength) : null
+}
 
 export function densityField(settings: DensitySettings, region: Region): DensityField {
   const s = Math.max(1, settings.strength)
-  if (settings.mode === 'none' || s === 1) return () => 1
+  if (uniformDensity(settings)) return () => 1
+  const grid = densityPicture(settings)
+  if (grid) return (x, y) => pictureDensityAt(grid, x, y)
   const [cx, cy] = regionCenter(region)
   if (settings.mode === 'linear') {
     // Angle 0° points right and 90° points up. Cells get smaller toward that direction.

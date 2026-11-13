@@ -168,11 +168,11 @@ describe('custom sheet shapes', () => {
     }
   })
 
-  it('saves the shape in version 2 project files and rejects damaged shapes', () => {
+  it('saves the shape in project files (version 2 and later) and rejects damaged shapes', () => {
     const back = parseProject(serializeProject({ settings, points: Float64Array.from([20, 40]), handEdited: false }))
     expect(back.settings.shape).toBe('custom')
     expect(back.settings.customShape).toEqual(pill)
-    expect(JSON.parse(serializeProject({ settings, points: new Float64Array(), handEdited: false })).version).toBe(2)
+    expect(JSON.parse(serializeProject({ settings, points: new Float64Array(), handEdited: false })).version).toBeGreaterThanOrEqual(2)
     expect(sanitizeShape({ ...pill, rings: [[0, 0, 1]] })).toBeNull()
     expect(sanitizeShape({ ...pill, rings: [[0, 0, 5, 0, 0, 1]] })).toBeNull()
     // A custom sheet without a usable shape falls back to a rectangle.

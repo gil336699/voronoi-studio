@@ -1,6 +1,7 @@
 // All design settings in one flat object, with defaults and allowed ranges. Lengths are millimetres.
 // Project files store this object, so new settings must get a default here.
-import type { DensityMode } from '../voronoi/density'
+import type { DensityMode, DensitySettings } from '../voronoi/density'
+import { sanitizePicture, type DensityPicture, type PictureFit } from '../voronoi/picture'
 import type { CellStyle } from '../voronoi/pattern'
 import type { Shape } from '../voronoi/region'
 import { sanitizeShape, type CustomShape } from '../voronoi/shape'
@@ -14,11 +15,13 @@ export type Settings = {
   // Points
   count: number; placement: Placement; autoSpacing: boolean; spacing: number; tries: number; jitter: number; seed: number
   density: DensityMode; densityStrength: number; densityAngle: number; densityInvert: boolean
+  // The picture for the Picture gradient, kept when switching to another gradient and back.
+  densityPicture: DensityPicture | null; pictureFit: PictureFit; pictureContrast: number; pictureSoftness: number; pictureInvert: boolean
   relaxSteps: number
   // Style
   cellStyle: CellStyle; web: number; cornerRadius: number; minHole: number
   lineWidth: number; lineColor: string; fill: boolean; fillColor: string; background: string
-  showSites: boolean; showEdges: boolean; showDelaunay: boolean
+  showSites: boolean; showEdges: boolean; showDelaunay: boolean; showPicture: boolean
   // Export
   transparentPng: boolean; sheetOutline: boolean
 }
@@ -27,11 +30,12 @@ export const DEFAULTS: Settings = {
   width: 200, height: 200, units: 'mm', dpi: 300, shape: 'rect', border: 5, keepPoints: true, customShape: null,
   count: 300, placement: 'even', autoSpacing: true, spacing: 10, tries: 30, jitter: 0.3, seed: 1,
   density: 'none', densityStrength: 4, densityAngle: 0, densityInvert: false,
+  densityPicture: null, pictureFit: 'fit', pictureContrast: 0, pictureSoftness: 0, pictureInvert: false,
   relaxSteps: 3,
   cellStyle: 'lines', web: 2, cornerRadius: 1, minHole: 0.5,
   // The old Voronoi Lab's colours: dark MIT red edges on white.
   lineWidth: 0.3, lineColor: '#7a0f1f', fill: false, fillColor: '#f4d6da', background: '#ffffff',
-  showSites: true, showEdges: true, showDelaunay: false,
+  showSites: true, showEdges: true, showDelaunay: false, showPicture: true,
   transparentPng: false, sheetOutline: true,
 }
 
@@ -39,18 +43,19 @@ type NumericKey = { [K in keyof Settings]: Settings[K] extends number ? K : neve
 export const RANGES: Record<NumericKey, [number, number]> = {
   width: [5, 5000], height: [5, 5000], dpi: [36, 1200], border: [0, 500],
   count: [2, 10_000], spacing: [0.05, 1000], tries: [1, 100], jitter: [0, 1], seed: [0, 999_999],
-  densityStrength: [1, 20], densityAngle: [0, 360], relaxSteps: [0, 50],
+  densityStrength: [1, 20], densityAngle: [0, 360], pictureContrast: [-100, 100], pictureSoftness: [0, 100], relaxSteps: [0, 50],
   web: [0, 100], cornerRadius: [0, 100], minHole: [0, 200], lineWidth: [0.005, 20],
 }
 
 const CHOICES = {
   units: ['mm', 'in', 'px', 'pc'], shape: ['rect', 'ellipse', 'custom'], placement: ['random', 'even', 'hex', 'square'],
-  density: ['none', 'linear', 'radial'], cellStyle: ['lines', 'holes'],
+  density: ['none', 'linear', 'radial', 'picture'], pictureFit: ['fit', 'fill'], cellStyle: ['lines', 'holes'],
 } as const
 
 // Settings that decide where points go. Changing one makes a new pattern (unless points were edited).
 export const SEED_KEYS: (keyof Settings)[] = ['count', 'placement', 'autoSpacing', 'spacing', 'tries', 'jitter', 'seed',
-  'density', 'densityStrength', 'densityAngle', 'densityInvert', 'relaxSteps']
+  'density', 'densityStrength', 'densityAngle', 'densityInvert',
+  'densityPicture', 'pictureFit', 'pictureContrast', 'pictureSoftness', 'pictureInvert', 'relaxSteps']
 // Settings that move the region points live in. With "Keep points" on, points follow the sheet instead.
 export const SHEET_KEYS: (keyof Settings)[] = ['width', 'height', 'shape', 'border', 'customShape']
 
@@ -66,6 +71,7 @@ export function sanitizeSettings(raw: unknown): Settings {
   for (const key of Object.keys(DEFAULTS) as (keyof Settings)[]) {
     const value = source[key], fallback = DEFAULTS[key]
     if (key === 'customShape') out[key] = sanitizeShape(value)
+    else if (key === 'densityPicture') out[key] = sanitizePicture(value)
     else if (typeof fallback === 'number') {
       if (typeof value === 'number' && Number.isFinite(value)) out[key] = clampSetting(key as NumericKey, value)
     } else if (typeof fallback === 'boolean') {
@@ -76,13 +82,23 @@ export function sanitizeSettings(raw: unknown): Settings {
   }
   // A custom sheet without its outline can't be drawn, so it becomes a rectangle.
   if (out.shape === 'custom' && !out.customShape) out.shape = 'rect'
+  // The same goes for a Picture gradient without its picture.
+  if (out.density === 'picture' && !out.densityPicture) out.density = 'none'
   return out as Settings
+}
+
+export function densitySettings(s: Settings): DensitySettings {
+  const picture = s.density === 'picture' && s.densityPicture ? {
+    picture: s.densityPicture, fit: s.pictureFit, contrast: s.pictureContrast, softness: s.pictureSoftness, invert: s.pictureInvert,
+    sheetWidth: s.width, sheetHeight: s.height,
+  } : null
+  return { mode: s.density, strength: s.densityStrength, angle: s.densityAngle, invert: s.densityInvert, picture }
 }
 
 export function seedSettings(s: Settings): SeedSettings {
   return {
     count: Math.min(MAX_POINTS, s.count), placement: s.placement, autoSpacing: s.autoSpacing, spacing: s.spacing,
     tries: s.tries, jitter: s.jitter, seed: s.seed,
-    density: { mode: s.density, strength: s.densityStrength, angle: s.densityAngle, invert: s.densityInvert },
+    density: densitySettings(s),
   }
 }

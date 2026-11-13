@@ -15,6 +15,7 @@ import { pngProblem, renderPng } from './lib/render'
 import { saveFile } from './lib/saveFile'
 import { DEFAULTS, seedSettings, type Settings } from './lib/settings'
 import { artworkSvg, laserSvg } from './lib/svgExport'
+import { PICTURE_ACCEPT, PictureError, readPicture } from './lib/pictureFile'
 import { readSvgOutlines, SvgShapeError } from './lib/svgShape'
 import { pixelSize, trimZeros, toUnits, UNIT_LABEL } from './lib/units'
 import { freshDoc, spacingOf, useDesign, type Doc, type Status } from './useDesign'
@@ -81,6 +82,7 @@ export function App() {
   const stageRef = useRef<StageControls | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
   const shapeInput = useRef<HTMLInputElement>(null)
+  const pictureInput = useRef<HTMLInputElement>(null)
 
   // Routine messages fade back to the cell count; warnings stay until something else happens.
   useEffect(() => {
@@ -182,20 +184,42 @@ export function App() {
     }
   }
 
-  // Files dropped on the window: SVGs become the sheet shape, project files open.
+  // A picture for the Picture gradient. It's a pattern setting, so with hand edits it waits to be applied.
+  const choosePicture = useCallback(() => pictureInput.current?.click(), [])
+  const readDensityPicture = async (file: File) => {
+    setStatus({ text: `Reading ${file.name}…` })
+    try {
+      const densityPicture = await readPicture(file)
+      design.change({ density: 'picture', densityPicture, showPicture: true }, 'densityPicture')
+      setTab('pattern')
+      // The name goes last: a long one is cut off at the end of the status line.
+      setStatus({ text: `Density picture: ${file.name}` })
+    } catch (error) {
+      setStatus({ text: error instanceof PictureError ? error.message : `${file.name} could not be read as a picture.`, warning: true })
+    }
+  }
+
+  // Files dropped on the window: pictures set the Picture gradient, project files open, and an SVG can be
+  // either the sheet shape or a picture, so it asks.
   useEffect(() => {
     const over = (event: DragEvent) => { if (event.dataTransfer?.types.includes('Files')) event.preventDefault() }
     const drop = (event: DragEvent) => {
       const file = event.dataTransfer?.files[0]
       if (!file) return
       event.preventDefault()
-      if (/\.svg$/i.test(file.name) || file.type === 'image/svg+xml') replaceEdits(() => void readShape(file))
+      if (/\.svg$/i.test(file.name) || file.type === 'image/svg+xml') setPending({
+        title: `Use ${file.name} as…`, confirm: 'Sheet shape', confirmTip: 'Its outline becomes the sheet, with shapes inside it as holes.',
+        body: 'As the sheet shape, its outline becomes the sheet. As a density picture, cells get smaller where the drawing is dark.',
+        run: () => replaceEdits(() => void readShape(file)),
+        other: { label: 'Density picture', tip: 'Use the drawing for the Picture gradient on the Pattern tab.', run: () => void readDensityPicture(file) },
+      })
       else if (/\.json$/i.test(file.name)) guard(design.unsaved, {
         title: 'Open another project?', confirm: 'Discard and open',
         body: 'Unsaved changes in the current design will be lost. Undo can still bring it back during this session.',
         run: () => void readProject(file),
       })
-      else setStatus({ text: `${file.name} isn’t an SVG shape or a Voronoi Studio project.`, warning: true })
+      else if (file.type.startsWith('image/') || /\.(jpe?g|jfif|png|gif|webp|avif|bmp|ico|tiff?|heic|heif|jxl)$/i.test(file.name)) void readDensityPicture(file)
+      else setStatus({ text: `${file.name} isn’t a picture, an SVG or a Voronoi Studio project.`, warning: true })
     }
     window.addEventListener('dragover', over)
     window.addEventListener('drop', drop)
@@ -231,7 +255,8 @@ export function App() {
   }
 
   const relaxBlocked = count < 3 && 'Relaxing needs at least 3 points.'
-  const toggle = (key: 'showSites' | 'showEdges' | 'showDelaunay') => design.change({ [key]: !s[key] }, key)
+  const toggle = (key: 'showSites' | 'showEdges' | 'showDelaunay' | 'showPicture') => design.change({ [key]: !s[key] }, key)
+  const pictureOn = s.density === 'picture' && Boolean(s.densityPicture)
   const closeQuickStart = () => { setShowQuickStart(false); storage.set(QUICK_START_KEY, '1') }
 
   // Keyboard shortcuts, ignored while typing. Re-registered each render so handlers see current state.
@@ -259,6 +284,7 @@ export function App() {
       else if (key === '1') toggle('showSites')
       else if (key === '2') toggle('showEdges')
       else if (key === '3') toggle('showDelaunay')
+      else if (key === '4') { if (pictureOn) toggle('showPicture') }
       else if (key === 'f' || key === '0') stageRef.current?.fit()
       else if (key === '+' || key === '=') stageRef.current?.zoomBy(1.25)
       else if (key === '-' || key === '_') stageRef.current?.zoomBy(1 / 1.25)
@@ -299,7 +325,7 @@ export function App() {
       ]} />
       <TabPanel idBase="design" id="pattern" value={tab}>
         <PatternPanel s={s} change={design.change} stale={doc.stale} onApply={applySettings} actualCount={count}
-          autoSpacingValue={design.spacing || autoSpacingFor(s)} exactSpacing={exactSpacing} capped={design.capped} onShuffle={generateNew} />
+          autoSpacingValue={design.spacing || autoSpacingFor(s)} exactSpacing={exactSpacing} capped={design.capped} onShuffle={generateNew} onChoosePicture={choosePicture} />
       </TabPanel>
       <TabPanel idBase="design" id="sheet" value={tab}><SheetPanel s={s} change={design.change} onImportShape={importShape} noRoom={noRoom} /></TabPanel>
       <TabPanel idBase="design" id="style" value={tab}><StylePanel s={s} change={design.change} holes={geometry.metrics.holes} dropped={geometry.metrics.dropped} /></TabPanel>
@@ -317,10 +343,15 @@ export function App() {
         event.currentTarget.value = ''
         if (file) void readShape(file)
       }} />
+      <input ref={pictureInput} type="file" accept={PICTURE_ACCEPT} hidden aria-label="Choose a picture for the density gradient" onChange={event => {
+        const file = event.currentTarget.files?.[0]
+        event.currentTarget.value = ''
+        if (file) void readDensityPicture(file)
+      }} />
     </aside>
 
     <div className="center">
-      <ViewBar tool={tool} setTool={setTool} s={s} toggle={toggle} zoom={zoom} onFit={() => stageRef.current?.fit()} onZoom={f => stageRef.current?.zoomBy(f)} />
+      <ViewBar tool={tool} setTool={setTool} s={s} toggle={toggle} picture={pictureOn} zoom={zoom} onFit={() => stageRef.current?.fit()} onZoom={f => stageRef.current?.zoomBy(f)} />
       <div className="sheet-frame" ref={frameRef}>
         {showQuickStart && <QuickStart onClose={closeQuickStart} />}
       </div>

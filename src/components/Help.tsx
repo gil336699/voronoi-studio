@@ -25,7 +25,7 @@ const SHORTCUTS: [string, string][] = [
   ['Shift-click', 'Erase a cell'],
   ['Scroll, pinch', 'Zoom'],
   ['+  −  F', 'Zoom in, out, fit'],
-  ['1  2  3', 'Sites, edges, Delaunay'],
+  ['1  2  3  4', 'Sites, edges, Delaunay, picture'],
   ['⌘Z  ⇧⌘Z', 'Undo, redo'],
   ['⌘S  ⌘O', 'Save, open project'],
   ['Esc', 'Close, or back to Move'],
@@ -44,7 +44,11 @@ export function HelpDialog({ onClose, onQuickStart }: { onClose: () => void; onQ
   </Modal>
 }
 
-export type Pending = { title: string; body: string; confirm: string; run: () => void }
+// other: a second choice, for questions with two answers besides Cancel.
+export type Pending = {
+  title: string; body: string; confirm: string; run: () => void; confirmTip?: string
+  other?: { label: string; tip: string; run: () => void }
+}
 
 export function ConfirmDialog({ pending, onCancel }: { pending: Pending; onCancel: () => void }) {
   return <Modal role="alertdialog" labelledBy="confirm-title" describedBy="confirm-body" onClose={onCancel}>
@@ -52,7 +56,8 @@ export function ConfirmDialog({ pending, onCancel }: { pending: Pending; onCance
     <p id="confirm-body" className="hint">{pending.body}</p>
     <div className="confirm-actions">
       <button type="button" data-autofocus data-tip="Keep the current design." onClick={onCancel}>Cancel</button>
-      <button type="button" className="primary" data-tip="Continue. Undo can bring the current points back." onClick={() => { onCancel(); pending.run() }}>{pending.confirm}</button>
+      {pending.other && <button type="button" data-tip={pending.other.tip} onClick={() => { onCancel(); pending.other!.run() }}>{pending.other.label}</button>}
+      <button type="button" className="primary" data-tip={pending.confirmTip ?? 'Continue. Undo can bring the current points back.'} onClick={() => { onCancel(); pending.run() }}>{pending.confirm}</button>
     </div>
   </Modal>
 }

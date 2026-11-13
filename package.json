@@ -1,7 +1,7 @@
 {
   "name": "voronoi-studio",
   "private": true,
-  "version": "1.4.1",
+  "version": "1.5.0",
   "license": "MIT",
   "type": "module",
   "scripts": {
@@ -15,13 +15,17 @@
   "dependencies": {
     "clipper2-ts": "2.0.1-19",
     "d3-delaunay": "^6.0.6",
+    "heic-to": "^1.6.7",
+    "pako": "^1.0.11",
     "react": "^19.3.1",
-    "react-dom": "^19.3.1"
+    "react-dom": "^19.3.1",
+    "utif2": "^4.1.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
     "@types/d3-delaunay": "^6.0.4",
     "@types/node": "^24.19.2",
+    "@types/pako": "^1.0.7",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^5.2.0",

@@ -220,6 +220,9 @@ input[type='color']::-moz-color-swatch { border: 1px solid var(--separator); bor
 .pair .swap { margin-bottom: 0; min-height: 28px; width: 28px; min-width: 28px; }
 .seed-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 8px; }
 .seed-row button { min-height: 28px; }
+.picture-file { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; margin-top: 10px; }
+.picture-file .hint { margin-top: 0; overflow-wrap: anywhere; }
+.picture-file button { min-height: 28px; }
 
 details.more { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--separator); }
 details > summary {
@@ -264,7 +267,7 @@ details[open] > summary::after { transform: rotate(45deg); }
 
 /* Floating bars over the sheet. */
 .viewport-bars { display: grid; justify-items: start; gap: 8px; pointer-events: none; }
-.viewport-bar-row { justify-self: stretch; display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.viewport-bar-row { justify-self: stretch; display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 8px; container-type: inline-size; }
 .floating-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; padding: 4px; border-radius: 999px; pointer-events: auto; }
 .floating-bar button { min-height: 30px; padding: 0 12px; background: transparent; font-weight: 500; }
 .floating-bar button:hover:not([aria-disabled='true']) { background: var(--well); }
@@ -329,6 +332,13 @@ kbd { display: inline-block; padding: 1px 7px; border-radius: 6px; background: v
   .transport button:has(.compact-label), .floating-bar button:has(.compact-label) { width: 34px; min-width: 34px; padding: 0; }
 }
 
+/* With the Picture toggle the view bar is about 70 px wider. Where both bars would no longer fit on one row,
+   the tools shrink to their symbols, as in medium windows, instead of pushing the view bar onto a second row. */
+@container (max-width: 744px) {
+  .viewport-bar-row.with-picture .compact-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .viewport-bar-row.with-picture .floating-bar button:has(.compact-label) { width: 34px; min-width: 34px; padding: 0; }
+}
+
 /* Tablets: the sheet on top with its bars and dock inside it, panels side by side below. */
 @media (max-width: 899px) {
   .studio { overflow: auto; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: auto auto auto; grid-template-areas: "brand brand" "center center" "sidebar inspector"; }
@@ -362,7 +372,7 @@ kbd { display: inline-block; padding: 1px 7px; border-radius: 6px; background: v
   .floating-bar button, .floating-bar button:has(.compact-label), .transport button:has(.compact-label) { min-width: 36px; width: auto; }
   .transport button { min-height: 36px; }
   .transport .icon-button { width: 36px; min-width: 36px; }
-  .seed-row button, .pair .swap, .inline-number, .switch-row, .more > summary { min-height: 36px; }
+  .seed-row button, .picture-file button, .pair .swap, .inline-number, .switch-row, .more > summary { min-height: 36px; }
   .pair .swap { width: 36px; min-width: 36px; }
 }
 

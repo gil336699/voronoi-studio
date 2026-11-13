@@ -6,6 +6,7 @@ import type { Outline } from '../voronoi/holes'
 import type { Geometry } from '../voronoi/pattern'
 import { regionCenter, regionHeight, regionWidth, type Region } from '../voronoi/region'
 import { cutPaths, num } from './cutPaths'
+import { PICTURE_OPACITY, pictureDataUrl, shownPicture } from './pictureLayer'
 import { DELAUNAY_COLOR, SITE_COLOR, siteRadius } from './style'
 import type { Settings } from './settings'
 
@@ -63,13 +64,20 @@ export function artworkSvg(g: Geometry, points: Float64Array, s: Settings): stri
   const fill = s.fill ? s.fillColor : 'none'
   let svg = header(s, true, 'Voronoi Studio artwork')
   svg += `<g id="sheet">${regionElement(g.sheet, `fill="${s.background}"`)}</g>\n`
+  // The picture guide sits over any fill and under the lines, as in the view, clipped to the sheet.
+  const shown = shownPicture(s)
+  const cellShapes = () => s.cellStyle === 'holes' ? g.holes.map(hole => `<path d="${outlinePath(hole.outline)}"/>\n`).join('') : `${regionElement(g.region, '')}\n`
+  if (s.showEdges && shown && s.fill) svg += `<g id="fills" fill="${s.fillColor}" fill-rule="evenodd" stroke="none">\n${cellShapes()}</g>\n`
+  if (shown) {
+    const { ox, oy, k, cols, rows } = shown.tones
+    svg += `<clipPath id="sheet-clip">${regionElement(g.sheet, 'fill-rule="evenodd"')}</clipPath>\n`
+      + `<g id="picture" opacity="${PICTURE_OPACITY}" clip-path="url(#sheet-clip)"><image xmlns:xlink="http://www.w3.org/1999/xlink" `
+      + `x="${num(ox)}" y="${num(oy)}" width="${num(cols * k)}" height="${num(rows * k)}" preserveAspectRatio="none" style="image-rendering:pixelated" `
+      + `xlink:href="${pictureDataUrl(shown.tones, shown.invert)}"/></g>\n`
+  }
   if (s.showEdges) {
-    svg += `<g id="cells" fill="${fill}" ${stroke}>\n`
-    if (s.cellStyle === 'holes') for (const hole of g.holes) svg += `<path d="${outlinePath(hole.outline)}"/>\n`
-    else {
-      svg += `${regionElement(g.region, '')}\n`
-      if (g.edges.internal.length) svg += `<path fill="none" d="${segmentsPath(g.edges.internal)}"/>\n`
-    }
+    svg += `<g id="cells" fill="${shown ? 'none' : fill}" ${stroke}>\n${cellShapes()}`
+    if (s.cellStyle !== 'holes' && g.edges.internal.length) svg += `<path fill="none" d="${segmentsPath(g.edges.internal)}"/>\n`
     svg += `</g>\n`
   }
   if (s.showDelaunay && g.delaunay.length) {
