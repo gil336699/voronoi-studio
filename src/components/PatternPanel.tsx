@@ -5,6 +5,7 @@ import { Button, DraftNumber, LengthField, NumberField, Section, Segmented, Slid
 import type { Placement } from '../voronoi/seeding'
 import type { DensityMode } from '../voronoi/density'
 import type { PictureFit } from '../voronoi/picture'
+import type { VeinStart, VeinStyle } from '../voronoi/veins'
 import { PICTURE_TYPES } from '../lib/pictureFile'
 
 export type Change = (patch: Partial<Settings>, key?: string) => void
@@ -31,12 +32,30 @@ const FITS: Option<PictureFit>[] = [
   { value: 'fit', label: 'Fit', tip: 'Start from the whole picture fitted inside the sheet. Around it counts as white paper.' },
   { value: 'fill', label: 'Fill', tip: 'Start from the picture covering the whole sheet, cutting off what doesn’t fit.' },
 ]
+const veinStyles = (imported: boolean): Option<VeinStyle>[] => [
+  { value: 'none', label: 'None', tip: 'No veins: one pattern across the whole sheet.' },
+  { value: 'wing', label: 'Wing', tip: 'Veins fan out from the start to the far edges and branch where they bunch up, like an insect wing’s main veins.' },
+  { value: 'leaf', label: 'Leaf', tip: 'Veins grow from the start toward the edges and branch as they go, like a leaf’s veins (space colonization).' },
+  { value: 'imported', label: 'Imported', tip: 'The open lines from an SVG you imported.', unavailable: !imported && 'Import an SVG with open lines first, with Import veins… below, or a sheet shape whose file has open lines.' },
+]
+const STARTS: Option<VeinStart>[] = [
+  { value: 'left', label: 'Left', tip: 'Veins start at the middle of the left side.' },
+  { value: 'right', label: 'Right', tip: 'Veins start at the middle of the right side.' },
+  { value: 'top', label: 'Top', tip: 'Veins start at the middle of the top.' },
+  { value: 'bottom', label: 'Bottom', tip: 'Veins start at the middle of the bottom.' },
+  { value: 'centre', label: 'Centre', tip: 'Veins spread out from the centre in every direction.' },
+]
+const VEIN_HINT: Record<Exclude<VeinStyle, 'none'>, string> = {
+  wing: 'Each region between veins gets its own cells, as in an insect wing. Veins run side by side near the start and spread to the far edges.',
+  leaf: 'Each region between veins gets its own cells. The veins that feed the most branches are the thickest.',
+  imported: 'Each region between your lines gets its own cells. Lines are as wide as Vein width at their start, narrowing by Taper.',
+}
 const size = (w: number, h: number) => `${w.toLocaleString()} × ${h.toLocaleString()} px`
 
 // Memoised: the panel only re-renders when its own props change, not on every relax step.
-export const PatternPanel = memo(function PatternPanel({ s, change, stale, onApply, actualCount, autoSpacingValue, exactSpacing, capped, onShuffle, onChoosePicture }: {
+export const PatternPanel = memo(function PatternPanel({ s, change, stale, onApply, actualCount, autoSpacingValue, exactSpacing, capped, onShuffle, onChoosePicture, onImportVeins }: {
   s: Settings; change: Change; stale: boolean; onApply: () => void; actualCount: number; autoSpacingValue: number
-  exactSpacing: () => number; capped: boolean; onShuffle: () => void; onChoosePicture: () => void
+  exactSpacing: () => number; capped: boolean; onShuffle: () => void; onChoosePicture: () => void; onImportVeins: () => void
 }) {
   const grid = s.placement === 'hex' || s.placement === 'square'
   const spacingOff = s.placement === 'random' && 'Random placement has no spacing to set.'
@@ -114,7 +133,7 @@ export const PatternPanel = memo(function PatternPanel({ s, change, stale, onApp
           <Segmented label="Small cells at" value={s.pictureInvert ? 'light' : 'dark'} onChange={v => change({ pictureInvert: v === 'light' }, 'pictureInvert')}
             options={[{ value: 'dark', label: 'Dark', tip: 'Dark parts of the picture get the smallest cells, like ink.' }, { value: 'light', label: 'Light', tip: 'Light parts of the picture get the smallest cells.' }]} />
           <SliderField label="Contrast" value={s.pictureContrast} min={RANGES.pictureContrast[0]} max={RANGES.pictureContrast[1]} step={5}
-            format={v => `${v > 0 ? '+' : ''}${v} %`} tip="Spread the mid-greys apart for a bolder pattern, or bring them together for a gentler one. The darkest and lightest parts are always stretched to black and white."
+            format={v => `${v > 0 ? '+' : ''}${v} %`} tip="Spread the mid-greys apart for a bolder pattern, or together for a gentler one. The darkest and lightest parts stay black and white."
             onChange={pictureContrast => change({ pictureContrast }, 'pictureContrast')} />
           <LengthField label="Softness" mm={s.pictureSoftness} min={RANGES.pictureSoftness[0]} max={RANGES.pictureSoftness[1]} units={s.units} dpi={s.dpi} small
             tip="Blur the picture by about this distance first. Softens hard edges, and turns line drawings into cells that shrink near the lines."
@@ -143,6 +162,28 @@ export const PatternPanel = memo(function PatternPanel({ s, change, stale, onApp
         unavailable={s.stretch <= 1 && 'Turn the amount up from Off first.'}
         tip="The direction cells get longer in. 0° is right, 90° is up." onChange={stretchAngle => change({ stretchAngle }, 'stretchAngle')} />
       {s.stretch > 1 && <p className="hint">Each point measures distance with an ellipse instead of a circle, so cells stay straight-edged but grow longer along {s.stretchAngle}°. Long cells leave long, thin webs between them: in Holes style, check the narrowest hole.</p>}
+    </Section>
+
+    <Section title="Veins">
+      <Segmented label="Veins" hideLabel options={veinStyles(Boolean(s.veinLines))} value={s.veins} onChange={veins => change({ veins }, 'veins')} />
+      {s.veins === 'none'
+        ? <p className="hint">Primary veins split the sheet into regions, each filled with its own cells, like an insect wing or a leaf.</p>
+        : <>
+          {s.veins !== 'imported' && <>
+            <SliderField label="Vein ends" value={s.veinCount} min={RANGES.veinCount[0]} max={RANGES.veinCount[1]}
+              tip={s.veins === 'wing' ? 'How many veins reach the edge. Veins that bunch up near the start join, so there are fewer there.' : 'How many branch ends the veins have.'}
+              onChange={veinCount => change({ veinCount }, 'veinCount')} />
+            <Segmented label="Start from" options={STARTS} value={s.veinStart} onChange={veinStart => change({ veinStart }, 'veinStart')} />
+          </>}
+          <LengthField label="Vein width" mm={s.veinWidth} min={RANGES.veinWidth[0]} max={RANGES.veinWidth[1]} units={s.units} dpi={s.dpi} small
+            tip="How wide veins are where they start. In Holes style, the web on each side adds to it." onChange={veinWidth => change({ veinWidth }, 'veinWidth')} />
+          <SliderField label="Taper" value={s.veinTaper} min={RANGES.veinTaper[0]} max={RANGES.veinTaper[1]} step={5} format={v => `${v} %`}
+            tip="How much narrower veins get toward their far ends." onChange={veinTaper => change({ veinTaper }, 'veinTaper')} />
+          <p className="hint">{VEIN_HINT[s.veins]}</p>
+        </>}
+      <Button className="wide" tip="Use an SVG’s open lines as veins. They’re placed by the file’s page, or by its outline if it has one."
+        onClick={onImportVeins}>Import veins…</Button>
+      {s.veinLines && <p className="hint"><b>{s.veinLines.name}</b>: {s.veinLines.lines.length.toLocaleString()} {s.veinLines.lines.length === 1 ? 'line' : 'lines'}.{s.veins === 'imported' ? '' : ' Choose Imported to use them.'}</p>}
     </Section>
 
     <Section title="Relaxation">

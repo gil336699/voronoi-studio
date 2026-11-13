@@ -6,7 +6,7 @@ import type { Geometry } from '../voronoi/pattern'
 import { boxCorners, type PictureBox } from '../voronoi/picture'
 import { regionCenter, regionHeight, regionWidth, type Region } from '../voronoi/region'
 import { PICTURE_OPACITY, pictureCanvas, shownPicture } from './pictureLayer'
-import { DELAUNAY_COLOR, SITE_COLOR, siteRadius } from './style'
+import { DELAUNAY_COLOR, SITE_COLOR, siteRadius, widthBuckets } from './style'
 import type { Settings } from './settings'
 
 export type Hover = { kind: 'site' | 'cell'; index: number } | null
@@ -101,8 +101,23 @@ export function drawDesign(ctx: CanvasRenderingContext2D, g: Geometry, points: F
       ctx.beginPath(); regionPath(ctx, g.region)
       if (s.fill) ctx.fill('evenodd')
       drawPicture()
-      segmentsPath(ctx, g.edges.internal)
-      ctx.stroke()
+      const widths = g.edges.widths
+      if (!widths) { segmentsPath(ctx, g.edges.internal); ctx.stroke() }
+      else {
+        // Walls follow cell size: the outline at full width, then each width step of the inner edges.
+        ctx.stroke()
+        for (const [share, segments] of widthBuckets(g.edges.internal, widths)) {
+          ctx.beginPath(); segmentsPath(ctx, segments)
+          ctx.lineWidth = Math.max(s.lineWidth * share, minLine); ctx.stroke()
+        }
+        ctx.lineWidth = lineWidth
+      }
+      // Veins, solid in the line colour. (In Holes style they're part of the material already.)
+      if (g.veins.length) {
+        ctx.beginPath()
+        for (const ring of g.veins) { ring.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.closePath() }
+        ctx.fillStyle = s.lineColor; ctx.fill('evenodd'); ctx.fillStyle = s.fillColor
+      }
     }
   } else drawPicture()
 

@@ -7,7 +7,7 @@ import type { Geometry } from '../voronoi/pattern'
 import { regionCenter, regionHeight, regionWidth, type Region } from '../voronoi/region'
 import { cutPaths, num } from './cutPaths'
 import { PICTURE_OPACITY, pictureDataUrl, shownPicture } from './pictureLayer'
-import { DELAUNAY_COLOR, SITE_COLOR, siteRadius } from './style'
+import { DELAUNAY_COLOR, SITE_COLOR, siteRadius, widthBuckets } from './style'
 import type { Settings } from './settings'
 
 export const LASER_RED = '#ff0000'
@@ -77,8 +77,14 @@ export function artworkSvg(g: Geometry, points: Float64Array, s: Settings): stri
   }
   if (s.showEdges) {
     svg += `<g id="cells" fill="${shown ? 'none' : fill}" ${stroke}>\n${cellShapes()}`
-    if (s.cellStyle !== 'holes' && g.edges.internal.length) svg += `<path fill="none" d="${segmentsPath(g.edges.internal)}"/>\n`
+    if (s.cellStyle !== 'holes' && g.edges.internal.length) {
+      if (!g.edges.widths) svg += `<path fill="none" d="${segmentsPath(g.edges.internal)}"/>\n`
+      else for (const [share, segments] of widthBuckets(g.edges.internal, g.edges.widths)) {
+        svg += `<path fill="none" stroke-width="${num(s.lineWidth * share, 4)}" d="${segmentsPath(segments)}"/>\n`
+      }
+    }
     svg += `</g>\n`
+    if (s.cellStyle !== 'holes' && g.veins.length) svg += `<g id="veins" fill="${s.lineColor}" stroke="none"><path fill-rule="evenodd" d="${ringsPath(g.veins)}"/></g>\n`
   }
   if (s.showDelaunay && g.delaunay.length) {
     svg += `<g id="delaunay" fill="none" stroke="${DELAUNAY_COLOR}" stroke-opacity="0.6" stroke-width="${width}" stroke-linecap="round">`

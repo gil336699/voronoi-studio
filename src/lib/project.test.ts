@@ -92,7 +92,7 @@ describe('stretch in project files', () => {
     const back = parseProject(serializeProject({ settings, points: Float64Array.from([10, 10, 50, 50]), handEdited: false }))
     expect(back.settings.stretch).toBe(2.5)
     expect(back.settings.stretchAngle).toBe(30)
-    expect(JSON.parse(serializeProject({ settings, points: new Float64Array(), handEdited: false })).version).toBe(4)
+    expect(JSON.parse(serializeProject({ settings, points: new Float64Array(), handEdited: false })).version).toBeGreaterThanOrEqual(4)
     expect(sanitizeSettings({ stretch: 9, stretchAngle: -20 })).toMatchObject({ stretch: 5, stretchAngle: 0 })
     expect(sanitizeSettings({}).stretch).toBe(1) // older files: no stretch
     const doc = { settings: DEFAULTS, points: new Float64Array(4), handEdited: false, stale: false }

@@ -69,7 +69,25 @@ export const segmentsToSheet = (segments: Segment[], f: Frame): Segment[] =>
 // is cached by outline) is built once per region and stretch, not once per relax step.
 const fromRings = new WeakMap<Polygon[], Map<string, Polygon[]>>()
 const fromBoxes = new Map<string, Polygon[]>()
+const fromParts = new WeakMap<Polygon[][], Map<string, Polygon[][]>>()
+const ringsToWork = (source: Polygon[], f: Frame): Polygon[] => {
+  let byFrame = fromRings.get(source)
+  if (!byFrame) { byFrame = new Map(); fromRings.set(source, byFrame) }
+  const rings = byFrame.get(f.key) ?? source.map(ring => ringTo(ring, (x, y) => toWork(f, x, y)))
+  byFrame.set(f.key, rings)
+  return rings
+}
 export function workRegion(region: Region, f: Frame): Region {
+  if (region.parts) {
+    // A region split by veins: its pieces are squeezed too, each kept, so their caches stay warm.
+    let byFrame = fromParts.get(region.parts)
+    if (!byFrame) { byFrame = new Map(); fromParts.set(region.parts, byFrame) }
+    const parts = byFrame.get(f.key) ?? region.parts.map(p => ringsToWork(p, f))
+    byFrame.set(f.key, parts)
+    const rings = ringsToWork(region.rings ?? [], f)
+    const [x0, y0, x1, y1] = boxOf(rings)
+    return { shape: 'custom', x0, y0, x1, y1, rings, parts }
+  }
   if (f.axis && region.shape !== 'custom') {
     const [x0, y0] = toWork(f, region.x0, region.y0), [x1, y1] = toWork(f, region.x1, region.y1)
     return { shape: region.shape, x0, y0, x1, y1 }

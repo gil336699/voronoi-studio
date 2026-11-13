@@ -2,7 +2,7 @@
 // gradient, the centre is weighted so the gradient survives relaxing. Relaxed patterns settle with point
 // density proportional to the square root of the weight, so the weight is the density squared.
 import { densityField, densityPicture, uniformDensity, type DensitySettings } from './density'
-import { buildCells, cellCentroid, type Cell } from './diagram'
+import { buildCells, cellCentroid, partOf, regionParts, type Cell } from './diagram'
 import type { Vec } from './geometry'
 import { pictureCentroid } from './picture'
 import { clampToRegion, contains, type Region } from './region'
@@ -40,14 +40,17 @@ export function lloydStep(points: Float64Array, region: Region, density: Density
   const picture = densityPicture(density)
   const centre = (cell: Cell): Vec => (picture ? pictureCentroid(cell, picture) ?? cellCentroid(cell) : weighted ? weightedCentroid(cell, field) : cellCentroid(cell))
   const out = new Float64Array(points.length)
+  // With veins, each point stays in its own piece between them.
+  const parts = regionParts(region), owner = parts ? partOf(points, parts) : null
   let maxMove = 0
   for (let i = 0; i < cells.length; i++) {
     const cell = cells[i]
     let x = points[i * 2], y = points[i * 2 + 1]
     if (cell) {
       const [tx, ty] = centre(cell)
+      const home = parts && owner ? parts[owner[i]] : region
       // A piece of a cell that wraps a concave edge can have its centre outside the shape.
-      ;[x, y] = region.shape === 'custom' && contains(region, tx, ty) ? [tx, ty] : clampToRegion(region, tx, ty)
+      ;[x, y] = home.shape === 'custom' && contains(home, tx, ty) ? [tx, ty] : clampToRegion(home, tx, ty)
     }
     maxMove = Math.max(maxMove, Math.hypot(x - points[i * 2], y - points[i * 2 + 1]))
     out[i * 2] = x; out[i * 2 + 1] = y

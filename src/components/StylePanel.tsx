@@ -1,7 +1,7 @@
 import { memo } from 'react'
 import { RANGES, type Settings } from '../lib/settings'
 import type { CellStyle } from '../voronoi/pattern'
-import { ColorField, LengthField, Section, Segmented, SwitchField, type Option } from './Controls'
+import { ColorField, LengthField, Section, Segmented, SliderField, SwitchField, type Option } from './Controls'
 import type { Change } from './PatternPanel'
 
 const STYLES: Option<CellStyle>[] = [
@@ -29,6 +29,11 @@ export const StylePanel = memo(function StylePanel({ s, change, holes, dropped }
           ? <div className="notice" role="status"><p>No holes fit: the web or the smallest hole is wider than the cells. Use a thinner web, a smaller smallest hole, or fewer cells.</p></div>
           : dropped > 0 && <p className="hint">{dropped.toLocaleString()} {dropped === 1 ? 'cell is' : 'cells are'} left solid because {dropped === 1 ? 'it is' : 'they are'} narrower than the smallest hole.</p>}
       </>}
+      <SliderField label="Walls follow cell size" value={s.wallsFollow} min={RANGES.wallsFollow[0]} max={RANGES.wallsFollow[1]} step={5}
+        format={v => (v ? `${v} %` : 'Off')}
+        tip={s.cellStyle === 'holes' ? 'Thinner web between smaller cells, as a wing’s veins thin where its cells are small. At 100 %, cells half as wide get half the web.'
+          : 'Thinner lines between smaller cells, as a wing’s veins thin where its cells are small. Laser files keep hairlines.'}
+        onChange={wallsFollow => change({ wallsFollow }, 'wallsFollow')} />
     </Section>
 
     <Section title="Colour and line">

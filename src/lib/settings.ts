@@ -7,6 +7,9 @@ import type { Shape } from '../voronoi/region'
 import { sanitizeShape, type CustomShape } from '../voronoi/shape'
 import { MAX_POINTS, type Placement, type SeedSettings } from '../voronoi/seeding'
 import type { Stretch } from '../voronoi/stretch'
+import type { ImportedVeins } from '../voronoi/pattern'
+import type { VeinStart, VeinStyle } from '../voronoi/veins'
+import { sanitizeVeins } from '../voronoi/veinLines'
 import type { Units } from './units'
 
 export type Settings = {
@@ -22,9 +25,12 @@ export type Settings = {
   pictureScale: number; pictureX: number; pictureY: number
   // Stretch: how many times longer than wide cells are (1 is off), and the long direction in degrees.
   stretch: number; stretchAngle: number
+  // Veins that split the pattern into regions (see veins.ts). veinLines: imported veins, kept when switching style.
+  veins: VeinStyle; veinCount: number; veinStart: VeinStart; veinWidth: number; veinTaper: number; veinLines: ImportedVeins | null
   relaxSteps: number
   // Style
   cellStyle: CellStyle; web: number; cornerRadius: number; minHole: number
+  wallsFollow: number // 0–100 %: walls between smaller cells get thinner
   lineWidth: number; lineColor: string; fill: boolean; fillColor: string; background: string
   showSites: boolean; showEdges: boolean; showDelaunay: boolean; showPicture: boolean
   // Export
@@ -38,8 +44,9 @@ export const DEFAULTS: Settings = {
   densityPicture: null, pictureFit: 'fit', pictureContrast: 0, pictureSoftness: 0, pictureInvert: false,
   pictureScale: 100, pictureX: 0, pictureY: 0,
   stretch: 1, stretchAngle: 0,
+  veins: 'none', veinCount: 8, veinStart: 'left', veinWidth: 1, veinTaper: 60, veinLines: null,
   relaxSteps: 3,
-  cellStyle: 'lines', web: 2, cornerRadius: 1, minHole: 0.5,
+  cellStyle: 'lines', web: 2, cornerRadius: 1, minHole: 0.5, wallsFollow: 0,
   // The old Voronoi Lab's colours: dark MIT red edges on white.
   lineWidth: 0.3, lineColor: '#7a0f1f', fill: false, fillColor: '#f4d6da', background: '#ffffff',
   showSites: true, showEdges: true, showDelaunay: false, showPicture: true,
@@ -50,19 +57,22 @@ type NumericKey = { [K in keyof Settings]: Settings[K] extends number ? K : neve
 export const RANGES: Record<NumericKey, [number, number]> = {
   width: [5, 5000], height: [5, 5000], dpi: [36, 1200], border: [0, 500],
   count: [2, 10_000], spacing: [0.05, 1000], tries: [1, 100], jitter: [0, 1], seed: [0, 999_999],
-  densityStrength: [1, 20], densityAngle: [0, 360], pictureContrast: [-100, 100], pictureSoftness: [0, 100], pictureScale: [10, 400], pictureX: [-5000, 5000], pictureY: [-5000, 5000], stretch: [1, 5], stretchAngle: [0, 180], relaxSteps: [0, 50],
-  web: [0, 100], cornerRadius: [0, 100], minHole: [0, 200], lineWidth: [0.005, 20],
+  densityStrength: [1, 20], densityAngle: [0, 360], pictureContrast: [-100, 100], pictureSoftness: [0, 100], pictureScale: [10, 400], pictureX: [-5000, 5000], pictureY: [-5000, 5000],
+  stretch: [1, 5], stretchAngle: [0, 180], veinCount: [2, 60], veinWidth: [0.05, 50], veinTaper: [0, 90], relaxSteps: [0, 50],
+  web: [0, 100], cornerRadius: [0, 100], minHole: [0, 200], lineWidth: [0.005, 20], wallsFollow: [0, 100],
 }
 
 const CHOICES = {
   units: ['mm', 'in', 'px', 'pc'], shape: ['rect', 'ellipse', 'custom'], placement: ['random', 'even', 'hex', 'square'],
   density: ['none', 'linear', 'radial', 'picture'], pictureFit: ['fit', 'fill'], cellStyle: ['lines', 'holes'],
+  veins: ['none', 'wing', 'leaf', 'imported'], veinStart: ['left', 'right', 'top', 'bottom', 'centre'],
 } as const
 
 // Settings that decide where points go. Changing one makes a new pattern (unless points were edited).
 export const SEED_KEYS: (keyof Settings)[] = ['count', 'placement', 'autoSpacing', 'spacing', 'tries', 'jitter', 'seed',
   'density', 'densityStrength', 'densityAngle', 'densityInvert',
-  'densityPicture', 'pictureFit', 'pictureContrast', 'pictureSoftness', 'pictureInvert', 'pictureScale', 'pictureX', 'pictureY', 'stretch', 'stretchAngle', 'relaxSteps']
+  'densityPicture', 'pictureFit', 'pictureContrast', 'pictureSoftness', 'pictureInvert', 'pictureScale', 'pictureX', 'pictureY', 'stretch', 'stretchAngle',
+  'veins', 'veinCount', 'veinStart', 'veinWidth', 'veinTaper', 'veinLines', 'relaxSteps']
 // Settings that move the region points live in. With "Keep points" on, points follow the sheet instead.
 export const SHEET_KEYS: (keyof Settings)[] = ['width', 'height', 'shape', 'border', 'customShape']
 
@@ -79,6 +89,7 @@ export function sanitizeSettings(raw: unknown): Settings {
     const value = source[key], fallback = DEFAULTS[key]
     if (key === 'customShape') out[key] = sanitizeShape(value)
     else if (key === 'densityPicture') out[key] = sanitizePicture(value)
+    else if (key === 'veinLines') out[key] = sanitizeVeins(value)
     else if (typeof fallback === 'number') {
       if (typeof value === 'number' && Number.isFinite(value)) out[key] = clampSetting(key as NumericKey, value)
     } else if (typeof fallback === 'boolean') {
@@ -91,6 +102,8 @@ export function sanitizeSettings(raw: unknown): Settings {
   if (out.shape === 'custom' && !out.customShape) out.shape = 'rect'
   // The same goes for a Picture gradient without its picture.
   if (out.density === 'picture' && !out.densityPicture) out.density = 'none'
+  // And imported veins without their lines.
+  if (out.veins === 'imported' && !out.veinLines) out.veins = 'none'
   return out as Settings
 }
 

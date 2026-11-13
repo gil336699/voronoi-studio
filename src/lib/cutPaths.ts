@@ -7,6 +7,7 @@ import type { Segment } from '../voronoi/geometry'
 import type { Outline } from '../voronoi/holes'
 import type { Geometry } from '../voronoi/pattern'
 import { splitHoles, type Region } from '../voronoi/region'
+import { boxOf } from '../voronoi/shape'
 import type { Settings } from './settings'
 import { siteRadius } from './style'
 
@@ -33,7 +34,11 @@ export function cutPaths(g: Geometry, points: Float64Array, s: CutSettings): Cut
   if (!s.showEdges) return { lines: [], outlines: [], inner: sheetHoles, outer, ...marks }
   if (s.cellStyle === 'holes') return { lines: [], outlines: g.holes.map(h => h.outline), inner: sheetHoles, outer, ...marks }
   // The pattern's outline is its own cut when a border separates it from the sheet edge.
-  const inner = s.border > 1e-9 || !s.sheetOutline ? [g.region] : []
+  // With veins, the veins' outline is cut too: it's part of the pattern's outline, and on its own when the
+  // pattern reaches the sheet edge.
+  const veins: Region[] = g.veins.length && !(s.border > 1e-9 || !s.sheetOutline)
+    ? [(() => { const [x0, y0, x1, y1] = boxOf(g.veins); return { shape: 'custom' as const, x0, y0, x1, y1, rings: g.veins } })()] : []
+  const inner = s.border > 1e-9 || !s.sheetOutline ? [g.region] : veins
   return { lines: cuttable(g.edges.internal), outlines: [], inner: [...inner, ...sheetHoles], outer, ...marks }
 }
 

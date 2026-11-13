@@ -12,7 +12,7 @@ import { SEED_KEYS, SHEET_KEYS, type Settings } from './settings'
 
 export type Doc = Design & { stale: boolean }
 
-const LENGTH_KEYS = ['width', 'height', 'border', 'spacing', 'web', 'cornerRadius', 'minHole', 'lineWidth'] as const
+const LENGTH_KEYS = ['width', 'height', 'border', 'spacing', 'web', 'cornerRadius', 'minHole', 'lineWidth', 'veinWidth'] as const
 
 const sameRegion = (a: Region, b: Region) => a.shape === b.shape && a.rings === b.rings
   && [a.x0 - b.x0, a.y0 - b.y0, a.x1 - b.x1, a.y1 - b.y1].every(d => Math.abs(d) < 1e-9)

@@ -1,6 +1,6 @@
 # Voronoi Studio
 
-Voronoi Studio is a browser app for designing Voronoi patterns to make things with. Pick a sheet size and shape, or import your own outline from an SVG, choose how many cells and how they're placed, shape them with gradients (including one from your own photo or drawing), stretch them into long cells, and relax them, and drag, add or erase cells by hand. Then export them at real size: a laser-ready SVG or a DXF for cutting, or an SVG or PNG for artwork. It rebuilds and extends Gil's Voronoi Lab.
+Voronoi Studio is a browser app for designing Voronoi patterns to make things with. Pick a sheet size and shape, or import your own outline from an SVG, choose how many cells and how they're placed, shape them with gradients (including one from your own photo or drawing), stretch them into long cells, split them with veins like an insect wing or a leaf, and relax them, and drag, add or erase cells by hand. Then export them at real size: a laser-ready SVG or a DXF for cutting, or an SVG or PNG for artwork. It rebuilds and extends Gil's Voronoi Lab.
 
 **Use it online:** https://gil336699.github.io/voronoi-studio/
 
@@ -32,7 +32,7 @@ Each push to `main` builds the app and publishes it to GitHub Pages through `.gi
 The sheet fills the window, and the controls float above it on translucent glass, in the style of Apple's Liquid Glass. The look follows the system's light or dark appearance, and its Reduce transparency and Increase contrast settings. In Windows contrast themes, buttons, switches and sliders are drawn in the theme's own colours.
 
 - **Top left.** The app name and the **?** button for shortcuts and the quick start.
-- **Left panel.** Four tabs: **Pattern** (cells, placement, gradient, stretch, relaxation), **Sheet** (size, units, shape or imported outline, border), **Style** (Lines or Holes, colours) and **File** (project and exports). A dot on Pattern means hand edits are holding back new settings; a dot on File means unsaved changes.
+- **Left panel.** Four tabs: **Pattern** (cells, placement, gradient, stretch, veins, relaxation), **Sheet** (size, units, shape or imported outline, border), **Style** (Lines or Holes, colours) and **File** (project and exports). A dot on Pattern means hand edits are holding back new settings; a dot on File means unsaved changes.
 - **Above the sheet.** Tools (Move, Add, Erase, Pan, and Move picture with a Picture gradient) on the left. Sites, Edges or Holes, Delaunay, Picture (with a Picture gradient), and zoom on the right. A caption explains the current tool.
 - **Below the sheet.** The action dock: **Generate**, **Relax**, **Auto-relax**, the status, and Undo and Redo.
 - **Right panel.** **Measurements**: sheet size, cells, holes, average cell size, evenness, the narrowest hole or shortest edge, and total cut length.
@@ -130,6 +130,20 @@ What to expect: a cut sheet has to be covered with cells, so white gets the larg
 
 Long cells leave long, thin webs between them, so a stretched panel is stiffer along the stretch than across it, and thin webs can break; in Holes style, check the narrowest hole in the measurements. With Stretch on, **Minimum spacing** is the spacing before stretching: points end up farther apart along the stretch and closer across it.
 
+### Veins
+
+**Veins** split the sheet into regions, and each region gets its own cells, as an insect wing's main veins divide it (Hoffmann et al., *A simple developmental model recapitulates complex insect wing venation patterns*, PNAS 2018). No cell reaches across a vein.
+
+| Veins | What it does |
+| --- | --- |
+| Wing | Veins follow a flow from **Start from** (the middle of a side, or the centre) out to the far edges. They run side by side near the start, join only where they'd touch, and never cross, like a dragonfly's or a grasshopper's wing. |
+| Leaf | Veins grow from the start toward the edges and branch as they go (space colonization). The branches that feed the most tips are the thickest. |
+| Imported | Open lines from an SVG: lines or paths with a stroke and no fill. **Import veins…** places them by the file's page, or by its outline if it has one. Importing a sheet shape whose file also has open lines makes those lines its veins. |
+
+**Vein ends** sets how many veins reach the edge (Wing) or how many branch ends there are (Leaf). **Vein width** is their width at the start, and **Taper** how much narrower their far ends are. In Holes style a vein is solid, with the web added on each side; in Lines style it's drawn solid, and cut files cut round it.
+
+**Walls follow cell size** (Style tab) thins the web between smaller cells, as a wing's veins thin out where its cells are small: at 100 %, cells half as wide get a web half as thick, down to 15 %. In Lines style it varies the line width in the view, PNG and artwork SVG; laser files keep hairlines.
+
 ### Exports
 
 | Export | Contents | Units |
@@ -138,7 +152,7 @@ Long cells leave long, thin webs between them, so a stretched panel is stiffer a
 | DXF | AutoCAD R12 text. Holes as closed polylines whose rounded corners are true arcs, lines as LINE, round sheets as CIRCLE, imported outlines as polylines. Layers `CUT_INNER` (red) and `CUT_OUTER` (blue); when shown, sites as CIRCLE on `SITES` (green) and Delaunay lines as LINE on `DELAUNAY` (magenta). | mm, or in for inch sheets |
 | SVG | The design as shown: colours, line width, fill, background, sites and Delaunay lines if visible, and the density picture in group `picture` if shown. | mm, in, or px for pixel sheets |
 | PNG | The design at the sheet's pixels per inch, with the density picture if shown, optionally with a transparent background. | px |
-| Project | Settings, every point, any imported shape and any density picture, as `.voronoi.json` (schema `voronoi-studio/project`, version 4; versions 1 to 3 open too). | mm |
+| Project | Settings, every point, any imported shape and any density picture, as `.voronoi.json` (schema `voronoi-studio/project`, version 5, with any veins; versions 1 to 4 open too). | mm |
 
 Every export holds what the view shows: the **Sites**, **Edges** or **Holes**, and **Delaunay** buttons above the sheet decide what goes in, so turn Sites off for a file with only cuts. The density picture goes in the SVG and PNG when shown, but never in Laser SVG or DXF, where laser software would engrave it. The File tab lists what a cut file will hold. Cut files contain each line once, so a laser never cuts the same edge twice, and leave out cuts shorter than 5 µm, which a laser would only fire as a dot. Exports always show the whole sheet, whatever the zoom.
 
@@ -165,6 +179,8 @@ Every export holds what the view shows: the **Sites**, **Edges** or **Holes**, a
 | Gradient, Strength, Direction, Small cells at | The density gradient: None, Linear, Radial or Picture, how strong it is and which way it runs. |
 | Choose picture…, Replace…, Contrast, Softness, Picture size, Scale, Move right, Move down | The Picture gradient's picture, how it's read, and its size and place on the sheet (see Picture gradient above). |
 | Stretch: Amount, Direction | How many times longer than wide cells are (Off, or 1.1–5×), and which way (0° is right, 90° is up). |
+| Veins, Vein ends, Start from, Vein width, Taper, Import veins… | Veins that split the sheet into regions (see Veins above). |
+| Walls follow cell size | Thinner web or lines between smaller cells (0–100 %). |
 | Sites, Edges or Holes, Delaunay, Picture | Show or hide each part of the design, in the view and in every export (the picture stays out of cut files). |
 
 ## Keyboard shortcuts
@@ -194,6 +210,7 @@ On Windows and Linux, use Ctrl for ⌘. Space pans, as in most design tools, rat
 - **Relaxation** is Lloyd's method: each point moves to the centre of its cell. With a gradient the centre is weighted by the density squared, which is what keeps the gradient through hundreds of steps. Auto-relax counts the points as settled, and waits, when no point moves more than 1/2,000 of the typical spacing in a step.
 - **Picture gradient.** The picture is reduced to at most 512 pixels a side and turned grey by brightness (Rec. 709). Its darkest pixel becomes black and its lightest white, then Contrast, Softness (a three-pass box blur close to a Gaussian) and Small cells at give each pixel a tone from 0 to 1, and its density is Strength to the power of the tone. Relaxing weights each cell's centre by the density squared, as for the other gradients, but integrates it exactly over the picture's pixels instead of sampling it: by Green's theorem, each cell's weight and centre come from running sums along the pixel rows, taken around its outline (Secord, *Weighted Voronoi Stippling*, 2002). So sharp edges in the picture stay sharp and the points settle. On a white-to-black ramp at 9×, 2,000 relaxed cells come within 3 % of the expected count in every tenth of the width.
 - **Stretch.** One ellipse for every point (a Mahalanobis distance, as in Feng et al., *Cellular topology optimization on differentiable Voronoi diagrams*, 2022) turns the diagram into an ordinary Voronoi diagram in a squeezed copy of the sheet. The app squeezes the points and the pattern area by 1/√s along the direction and stretches them by √s across it, which keeps areas, builds and clips the cells there, then maps them back. New points are placed evenly in the squeezed copy, so they start stretched, and relaxing still moves each point to its cell's centre, which is what lowers the energy for any fixed ellipse. At 3× along 30°, relaxed cells measure 3.03 times as long as wide, along 30.0°. A different ellipse at each point would curve the edges, which cut files can't hold, so the stretch is the same across the sheet.
+- **Veins.** Wing veins are streamlines of a harmonic field: 1 in a small disc at the start, relaxed to Laplace's equation (SOR on a 200-cell grid). The edge nearest the start (30 % of the way out) is a wall the flow runs along, and the rest is where it leaves, so veins run beside the edge near their start and fan out to the far edges. Veins are traced from evenly spaced points on the far edges back toward the start; one that comes within a few grid steps of a vein already drawn joins it, a little nearer the start, so it branches at a shallow angle. Leaf veins use space colonization (Runions et al., 2005): growth toward Poisson-disk targets, pruned to the branches that feed the most tips, with tips carried on to the edge or the nearest vein so they close off regions. Veins become strips (Clipper2 offsets, simplified to 10 µm) taken out of the pattern; each piece left is filled, relaxed and clipped on its own.
 - **Holes.** Each cell is convex, so it is shrunk by half the web plus the corner radius, then grown back by the radius with arcs. That gives exact round corners with no self-intersections. Small cells get the largest radius that fits.
 - **Imported shapes.** [Clipper2](https://github.com/PolyClipping/Clipper2), through [clipper2-ts](https://github.com/countertype/clipper2-ts), merges the outlines (even-odd), shrinks them by the border with round corners, and clips the cells that cross the outline. A grid of the outline's edges makes "is this point inside?" fast enough for Poisson-disk sampling. Cells wholly inside keep the exact method above; clipped cells can be concave, so their holes come from Clipper's offsets, with rounded corners drawn as short segments within 5 µm.
 - **Determinism.** A seeded random generator (mulberry32) makes every pattern repeatable from its seed and settings.
@@ -229,15 +246,6 @@ Picture gradient, measured on the production build in headless Chrome:
 | Ramp, white to black, 2,000 cells at 9×, relaxed | every tenth of the width within 3 % of the expected count |
 | Two minutes of picture changes while Auto-relaxing | 44.0 → 42.9 steps/s, memory flat, the session copy at most 2 s old |
 
-Stretch, measured the same way (Lines, Auto-relax steps per second):
-
-| Cells | No stretch | 3× along 0° | 3× along 30° |
-| --- | --- | --- | --- |
-| 2,500 | 50.9 | 50.1 | 46.7 |
-| 10,000 | 37.5 | 34.4 | 24.2 |
-
-A stretch at an angle off the axes is slower at high counts, because the cells along the sheet's edge are clipped more carefully. On Line Growth's 2.5 MB outline, each new stretch takes 1–3.3 s to make its pattern.
-
 Stretch, measured the same way:
 
 | Task | Result |
@@ -249,12 +257,24 @@ Stretch, measured the same way:
 
 Directions off the axes are slower at high counts because the cells along the border are trimmed as if the sheet were an imported outline.
 
+Veins, measured the same way (Node, one relax step / one rebuild of the drawing; and Auto-relax in the app):
+
+| Task | Result |
+| --- | --- |
+| Make the veins and split the sheet | Wing 50–230 ms, Leaf 15–55 ms, once per vein setting |
+| 300 × 150 mm sheet, 12 wing veins, 1,800 cells | relax step 16 ms (5 ms without veins) |
+| Same, 8,000 cells | relax step 39 ms (10 ms without veins); Auto-relax 3.8 steps/s in the app |
+| Gil's traced wing, 18 imported veins, thickness picture, 1.5× stretch, 1,800 cells | relax step 28 ms, rebuild 29 ms (Lines) or 68 ms (Holes); Auto-relax about 8.6 steps/s in the app |
+
+Most cells touch a vein and are clipped against it, so veins make relaxing several times slower. Up to a couple of thousand cells it stays usable; beyond that, set the relax steps and press Relax.
+
 Patterns up to a few thousand cells stay smooth. With Auto-relax on while you drag the Cells slider, it kept relaxing at 45 steps/s with nearly 3,900 cells (production build, headless Chrome). At 10,000 cells, editing by hand and auto-relaxing are slow; set the relax steps and press Relax instead.
 
 - Up to 10,000 cells can be typed; spacing-driven placements stop at 20,000 points.
 - PNG export is limited to 16,384 px a side and 120 megapixels, which browsers can draw. Use SVG for larger work.
 - Cut files are not reordered to shorten laser travel.
 - The live design is kept in the browser's local storage; clearing site data removes it. Save a project file to keep work. A density picture adds about 260 kB to it.
+- Leaf veins come from a fixed set of targets for each setting, so Shuffle changes the cells but not the veins.
 - Photoshop files, PDFs and camera raw files can't be used as pictures; export a JPG or PNG. JPEG XL opens only where the browser reads it.
 
 ## Development

@@ -1,5 +1,13 @@
 # Voronoi Studio Changelog
 
+## 1.8.0 2026-11-13
+
+- **Veins.** A new Veins section on the Pattern tab splits the sheet into regions, each filled with its own cells, like an insect wing's main veins (Hoffmann et al. 2018). No cell reaches across a vein. **Wing** veins fan out from the middle of a side, or from the centre, to the far edges, running side by side near the start and branching at shallow angles. They never cross. **Leaf** veins grow and branch toward the edges, thickest where they feed the most branches. **Imported** uses open lines from an SVG.
+- Set how many veins reach the edge, where they start, how wide they are and how much they taper. In Holes style veins are solid web; in Lines style they're drawn solid and cut round.
+- **Import veins…** reads the open lines in an SVG. Importing a sheet shape whose file also has open lines now makes them its veins. Before, those lines were left out with a warning.
+- **Walls follow cell size** (Style tab): thinner web, or thinner lines in the artwork, between smaller cells, as a wing's veins thin out where its cells are small.
+- Projects are now version 5. Older projects open as before, without veins. Patterns without veins are unchanged.
+
 ## 1.7.0 2026-11-13
 
 - **Move picture tool.** With a Picture gradient on, a new tool (M) in the Tools bar shows the picture's outline with a handle at each corner. Drag the picture to move it, or drag a corner to resize it while the opposite corner stays put. Outside the picture, dragging pans as usual. Each drag is one Undo step, works by touch too, and Auto-relax keeps running through it. Before, the picture could only be placed with the Scale, Move right and Move down fields.

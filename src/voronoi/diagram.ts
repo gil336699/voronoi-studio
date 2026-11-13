@@ -5,8 +5,8 @@
 // the squeezed work space and stretched back (see stretch.ts).
 import { Delaunay } from 'd3-delaunay'
 import { centroid, clipConvex, normalize, signedArea, type Polygon, type Segment, type Vec } from './geometry'
-import { contains, regionArea, regionCenter, regionHeight, regionPolygon, regionWidth, type Region } from './region'
-import { shapeIndex } from './shape'
+import { clampToRegion, contains, regionArea, regionCenter, regionHeight, regionPolygon, regionWidth, type Region } from './region'
+import { boxOf, shapeIndex } from './shape'
 import { cellsToSheet, pointsToWork, segmentsToSheet, stretchFrame, workRegion, type Stretch } from './stretch'
 
 export type Cell = Polygon[]
@@ -28,12 +28,61 @@ export function cellCentroid(cell: Cell): Vec {
 const empty = (region: Region) => region.shape === 'custom' && !region.rings?.length
 type Voronoi = ReturnType<Delaunay<Float64Array>['voronoi']>
 
+// ---------- regions split by veins ----------
+// Each piece between veins is filled on its own, as the regions between an insect wing's primary veins are,
+// so no cell reaches across a vein.
+
+const pieceRegions = new WeakMap<Polygon[][], Region[]>()
+export function regionParts(region: Region): Region[] | null {
+  if (!region.parts?.length) return null
+  let out = pieceRegions.get(region.parts)
+  if (!out) {
+    out = region.parts.map(rings => { const [x0, y0, x1, y1] = boxOf(rings); return { shape: 'custom', x0, y0, x1, y1, rings } })
+    pieceRegions.set(region.parts, out)
+  }
+  return out
+}
+
+// Which piece each point is in. A point on a vein belongs to the nearest piece.
+export function partOf(points: Float64Array, parts: Region[]): Int32Array {
+  const n = points.length / 2, out = new Int32Array(n)
+  for (let i = 0; i < n; i++) {
+    const x = points[i * 2], y = points[i * 2 + 1]
+    let found = parts.findIndex(p => contains(p, x, y))
+    if (found < 0) {
+      let bd = Infinity
+      parts.forEach((p, k) => { const [cx, cy] = clampToRegion(p, x, y); const d = Math.hypot(cx - x, cy - y); if (d < bd) { bd = d; found = k } })
+    }
+    out[i] = Math.max(0, found)
+  }
+  return out
+}
+
+// Run a build on each piece's own points, and gather the results by point.
+function perPart(points: Float64Array, parts: Region[], each: (pts: Float64Array, part: Region, index: number[]) => void) {
+  const owner = partOf(points, parts)
+  parts.forEach((part, p) => {
+    const index: number[] = []
+    for (let i = 0; i < owner.length; i++) if (owner[i] === p) index.push(i)
+    if (!index.length) return
+    const pts = new Float64Array(index.length * 2)
+    index.forEach((i, k) => { pts[k * 2] = points[i * 2]; pts[k * 2 + 1] = points[i * 2 + 1] })
+    each(pts, part, index)
+  })
+}
+
 export function buildCells(points: Float64Array, region: Region, stretch?: Stretch | null): Cells {
   const f = stretchFrame(stretch)
   if (f) return cellsToSheet(buildCells(pointsToWork(points, f), workRegion(region, f)), f)
   const n = points.length / 2
   if (n === 0) return []
   if (empty(region)) return new Array(n).fill(null)
+  const parts = regionParts(region)
+  if (parts) {
+    const cells: Cells = new Array(n).fill(null)
+    perPart(points, parts, (pts, part, index) => buildCells(pts, part).forEach((c, k) => { cells[index[k]] = c }))
+    return cells
+  }
   return cellsOf(new Delaunay(points).voronoi([region.x0, region.y0, region.x1, region.y1]), n, region)
 }
 
@@ -48,6 +97,16 @@ export function buildDiagram(points: Float64Array, region: Region, stretch?: Str
   const n = points.length / 2
   if (n === 0) return { cells: [], internal: [] }
   if (empty(region)) return { cells: new Array(n).fill(null), internal: [] }
+  const parts = regionParts(region)
+  if (parts) {
+    const cells: Cells = new Array(n).fill(null), internal: Segment[] = []
+    perPart(points, parts, (pts, part, index) => {
+      const d = buildDiagram(pts, part)
+      d.cells.forEach((c, k) => { cells[index[k]] = c })
+      internal.push(...d.internal)
+    })
+    return { cells, internal }
+  }
   const voronoi = new Delaunay(points).voronoi([region.x0, region.y0, region.x1, region.y1])
   const raw: Segment[] = []
   let x = 0, y = 0
@@ -134,6 +193,12 @@ export function delaunayEdges(points: Float64Array, region: Region, stretch?: St
   if (f) return segmentsToSheet(delaunayEdges(pointsToWork(points, f), workRegion(region, f)), f)
   const n = points.length / 2
   if (n < 2) return []
+  const parts = regionParts(region)
+  if (parts) {
+    const out: Segment[] = []
+    perPart(points, parts, (pts, part) => out.push(...delaunayEdges(pts, part)))
+    return out
+  }
   const shape = region.shape === 'custom' ? shapeIndex(region.rings ?? []) : null
   const { triangles } = new Delaunay(points)
   const typical = Math.sqrt(regionArea(region) / (Math.PI * n)) * 0.9

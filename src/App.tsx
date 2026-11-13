@@ -23,7 +23,8 @@ import { integrateDensity, densityField } from './voronoi/density'
 import { buildGeometry, patternRegion } from './voronoi/pattern'
 import { randomSeed } from './voronoi/random'
 import { contains, regionArea } from './voronoi/region'
-import { shapeFromOutlines, ShapeError } from './voronoi/shape'
+import { boxOf, shapeFromOutlines, ShapeError } from './voronoi/shape'
+import { veinsFromLines } from './voronoi/veinLines'
 
 type TabId = 'pattern' | 'sheet' | 'style' | 'file'
 const SESSION_KEY = 'voronoi-studio:session'
@@ -83,6 +84,7 @@ export function App() {
   const fileInput = useRef<HTMLInputElement>(null)
   const shapeInput = useRef<HTMLInputElement>(null)
   const pictureInput = useRef<HTMLInputElement>(null)
+  const veinInput = useRef<HTMLInputElement>(null)
 
   // Routine messages fade back to the cell count; warnings stay until something else happens.
   useEffect(() => {
@@ -93,8 +95,11 @@ export function App() {
 
   // Geometry depends on a few settings only, so colour and visibility changes don't rebuild it.
   const { width, height, shape, customShape, border, cellStyle, web, cornerRadius, minHole, showDelaunay, stretch, stretchAngle } = s
-  const patternSettings = useMemo(() => ({ width, height, shape, customShape, border, cellStyle, web, cornerRadius, minHole, showDelaunay, stretch, stretchAngle }),
-    [width, height, shape, customShape, border, cellStyle, web, cornerRadius, minHole, showDelaunay, stretch, stretchAngle])
+  const { veins, veinCount, veinStart, veinWidth, veinTaper, veinLines, wallsFollow } = s
+  const patternSettings = useMemo(() => ({ width, height, shape, customShape, border, cellStyle, web, cornerRadius, minHole, showDelaunay, stretch, stretchAngle,
+    veins, veinCount, veinStart, veinWidth, veinTaper, veinLines, wallsFollow }),
+  [width, height, shape, customShape, border, cellStyle, web, cornerRadius, minHole, showDelaunay, stretch, stretchAngle,
+    veins, veinCount, veinStart, veinWidth, veinTaper, veinLines, wallsFollow])
   const geometry = useMemo(() => buildGeometry(doc.points, patternSettings), [doc.points, patternSettings])
   const exactSpacing = useCallback(() => spacingOf(s), [s])
   const count = doc.points.length / 2
@@ -172,15 +177,35 @@ export function App() {
       const outlines = readSvgOutlines(await file.text())
       const shape = shapeFromOutlines(outlines.rings, file.name, outlines.units)
       const edited = design.doc.handEdited
-      design.change({ shape: 'custom', customShape: shape, width: shape.width, height: shape.height }, 'customShape')
+      // Open lines in the same file are veins, placed on the outline they were drawn with.
+      const veinLines = outlines.lines.length ? veinsFromLines(outlines.lines, file.name, boxOf(outlines.rings)) : null
+      design.change({ shape: 'custom', customShape: shape, width: shape.width, height: shape.height, ...(veinLines ? { veinLines, veins: 'imported' as const } : {}) }, 'customShape')
       if (edited) design.generate() // already confirmed: start fresh in the new shape
       setTab('sheet')
-      const skipped = outlines.open ? ` ${outlines.open} open ${outlines.open === 1 ? 'line was' : 'lines were'} left out.` : ''
+      const veined = veinLines ? ` Its ${veinLines.lines.length} open ${veinLines.lines.length === 1 ? 'line is a vein' : 'lines are veins'}, on the Pattern tab.` : ''
       const using = outlines.fromClip ? `${file.name} is a picture, so the outline of its clipping mask is the sheet.` : `Using ${file.name} as the sheet.`
-      setStatus({ text: `${using}${skipped}`, warning: Boolean(outlines.open) || outlines.fromClip })
+      setStatus({ text: `${using}${veined}`, warning: outlines.fromClip })
     } catch (error) {
       const known = error instanceof SvgShapeError || error instanceof ShapeError
       setStatus({ text: known ? error.message : `${file.name} could not be read as a shape.`, warning: true })
+    }
+  }
+
+  // Veins from an SVG's open lines, placed by its outline if it has one (as when it's the sheet's own file), or
+  // by its page. A pattern setting, so with hand edits they wait to be applied.
+  const importVeins = useCallback(() => veinInput.current?.click(), [])
+  const readVeins = async (file: File) => {
+    try {
+      const found = readSvgOutlines(await file.text(), 0.02, true)
+      const box: [number, number, number, number] = found.rings.length ? boxOf(found.rings)
+        : found.page[0] > 0 && found.page[1] > 0 ? [0, 0, found.page[0], found.page[1]] : boxOf(found.lines)
+      const veinLines = veinsFromLines(found.lines, file.name, box)
+      if (!veinLines) throw new SvgShapeError(`${file.name} has no open lines to use as veins.`)
+      design.change({ veins: 'imported', veinLines }, 'veinLines')
+      setTab('pattern')
+      setStatus({ text: `Veins: ${veinLines.lines.length} ${veinLines.lines.length === 1 ? 'line' : 'lines'} from ${file.name}` })
+    } catch (error) {
+      setStatus({ text: error instanceof SvgShapeError ? error.message : `${file.name} could not be read for veins.`, warning: true })
     }
   }
 
@@ -334,7 +359,7 @@ export function App() {
       ]} />
       <TabPanel idBase="design" id="pattern" value={tab}>
         <PatternPanel s={s} change={design.change} stale={doc.stale} onApply={applySettings} actualCount={count}
-          autoSpacingValue={design.spacing || autoSpacingFor(s)} exactSpacing={exactSpacing} capped={design.capped} onShuffle={generateNew} onChoosePicture={choosePicture} />
+          autoSpacingValue={design.spacing || autoSpacingFor(s)} exactSpacing={exactSpacing} capped={design.capped} onShuffle={generateNew} onChoosePicture={choosePicture} onImportVeins={importVeins} />
       </TabPanel>
       <TabPanel idBase="design" id="sheet" value={tab}><SheetPanel s={s} change={design.change} onImportShape={importShape} noRoom={noRoom} /></TabPanel>
       <TabPanel idBase="design" id="style" value={tab}><StylePanel s={s} change={design.change} holes={geometry.metrics.holes} dropped={geometry.metrics.dropped} /></TabPanel>
@@ -351,6 +376,11 @@ export function App() {
         const file = event.currentTarget.files?.[0]
         event.currentTarget.value = ''
         if (file) void readShape(file)
+      }} />
+      <input ref={veinInput} type="file" accept=".svg,image/svg+xml" hidden aria-label="Choose an SVG with veins" onChange={event => {
+        const file = event.currentTarget.files?.[0]
+        event.currentTarget.value = ''
+        if (file) void readVeins(file)
       }} />
       <input ref={pictureInput} type="file" accept={PICTURE_ACCEPT} hidden aria-label="Choose a picture for the density gradient" onChange={event => {
         const file = event.currentTarget.files?.[0]

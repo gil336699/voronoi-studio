@@ -5,8 +5,9 @@ import { sanitizeSettings, type Settings } from './settings'
 
 export const SCHEMA = 'voronoi-studio/project'
 // Version 2 added imported sheet shapes (settings.customShape), version 3 density pictures
-// (settings.densityPicture) and version 4 stretched cells (settings.stretch). Older files open unchanged.
-export const VERSION = 4
+// (settings.densityPicture), version 4 stretched cells (settings.stretch) and version 5 veins
+// (settings.veins, settings.veinLines). Older files open unchanged.
+export const VERSION = 5
 export const EXTENSION = '.voronoi.json'
 
 export type Design = { settings: Settings; points: Float64Array; handEdited: boolean }

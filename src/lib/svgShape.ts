@@ -8,7 +8,9 @@ export type SvgUnits = 'file' | 'css' | 'illustrator'
 export type SvgOutlines = {
   rings: Polygon[] // closed outlines in millimetres, in file order
   units: SvgUnits // 'file': the file gives its size; 'css': assumed 96 per inch; 'illustrator': assumed 72 per inch
-  open: number // open paths that were left out because they don't enclose anything
+  open: number // open paths that don't enclose anything; they can be veins (see lines)
+  lines: Polygon[] // those open paths, in millimetres, as polylines
+  page: [number, number] // the file's page size in millimetres: its viewBox, or its own size
   // True when the file draws no closed shapes, only pictures, and the rings are the outlines of the clipping
   // masks that trim them. Illustrator saves a shape it can't write as SVG this way: a picture of it, clipped to its outline.
   fromClip: boolean
@@ -268,14 +270,14 @@ function rectPoints(a: Attributes, tol: number): Vec[] | null {
 
 // Closed outlines from one element, in its own coordinates. Open paths count as closed when their ends meet.
 // In a clipping path, a filled area, every part counts as closed.
-function outlinesOf(name: string, a: Attributes, tol: number, filled = false): { rings: Vec[][]; open: number } {
-  const rings: Vec[][] = []
+function outlinesOf(name: string, a: Attributes, tol: number, filled = false): { rings: Vec[][]; open: number; lines: Vec[][] } {
+  const rings: Vec[][] = [], lines: Vec[][] = []
   let open = 0
   const add = (points: Vec[], closed: boolean) => {
     if (points.length < 2) return
     const first = points[0], last = points[points.length - 1]
     const meets = Math.hypot(first[0] - last[0], first[1] - last[1]) <= tol * 4
-    if (!closed && !meets && !filled) { open++; return }
+    if (!closed && !meets && !filled) { open++; lines.push(points); return }
     const ring = meets ? points.slice(0, -1) : points
     if (ring.length >= 3) rings.push(ring)
   }
@@ -290,18 +292,23 @@ function outlinesOf(name: string, a: Attributes, tol: number, filled = false): {
     const points: Vec[] = []
     for (let k = 0; k + 1 < v.length; k += 2) points.push([v[k], v[k + 1]])
     add(points, name === 'polygon')
-  } else if (name === 'line' && !filled) open++
-  return { rings, open }
+  } else if (name === 'line' && !filled) {
+    open++
+    lines.push([[Number(a.x1 ?? 0) || 0, Number(a.y1 ?? 0) || 0], [Number(a.x2 ?? 0) || 0, Number(a.y2 ?? 0) || 0]])
+  }
+  return { rings, open, lines }
 }
 
-// All closed outlines in a file, in millimetres. tolerance: how far flattened curves may stray, in mm.
-export function readSvgOutlines(text: string, tolerance = 0.02): SvgOutlines {
+// All closed outlines in a file, in millimetres, and its open lines. tolerance: how far flattened curves may
+// stray, in mm. linesOnly: a file of open lines is fine (for veins), so it doesn't need a closed outline.
+export function readSvgOutlines(text: string, tolerance = 0.02, linesOnly = false): SvgOutlines {
   if (!/<svg[\s>]/i.test(text)) throw new SvgShapeError('This file is not an SVG drawing.')
   const illustrator = /Adobe Illustrator/i.test(text) || /data-name\s*=/.test(text)
   const body = text.replace(/<!--[\s\S]*?-->/g, '').replace(/<!\[CDATA\[[\s\S]*?\]\]>/g, '').replace(/<\?[\s\S]*?\?>/g, '').replace(/<!DOCTYPE[\s\S]*?>/gi, '')
 
-  const rings: Polygon[] = []
+  const rings: Polygon[] = [], lines: Polygon[] = []
   let open = 0, total = 0, units: SvgUnits = 'css'
+  let page: [number, number] = [0, 0]
   let rootScale = 0 // millimetres per user unit
   let rootM = IDENTITY
   // Clipping paths, in their own coordinates, and where each is used. They're placed in the user space of the
@@ -345,10 +352,12 @@ export function readSvgOutlines(text: string, tolerance = 0.02): SvgOutlines {
         rootScale = sx !== null && sy !== null ? Math.min(sx, sy) : sx ?? sy ?? perPx
         if ((w !== null && !px(unitOf(a.width))) || (h !== null && !px(unitOf(a.height)))) units = 'file'
         m = multiply([rootScale, 0, 0, rootScale, 0, 0], [1, 0, 0, 1, -vb[0], -vb[1]])
+        page = [vb[2] * rootScale, vb[3] * rootScale]
       } else {
         rootScale = perPx // without a viewBox, user units are pixels whatever the size says
         if (w !== null && !px(unitOf(a.width))) units = 'file'
         m = [rootScale, 0, 0, rootScale, 0, 0]
+        page = [(Number(numbers(a.width ?? '')[0]) || 0) * perPx, (Number(numbers(a.height ?? '')[0]) || 0) * perPx]
       }
     } else if (name === 'svg') {
       m = multiply(m, [1, 0, 0, 1, Number(a.x ?? 0) || 0, Number(a.y ?? 0) || 0])
@@ -360,6 +369,11 @@ export function readSvgOutlines(text: string, tolerance = 0.02): SvgOutlines {
       const tol = tolerance / Math.max(1e-12, matrixScale(m))
       const found = outlinesOf(name, a, tol)
       open += found.open
+      for (const line of found.lines) {
+        total += line.length
+        if (total > MAX_POINTS) throw new SvgShapeError(TOO_DETAILED)
+        lines.push(line.map(p => apply(m, p)))
+      }
       for (const ring of found.rings) {
         total += ring.length
         if (total > MAX_POINTS) throw new SvgShapeError(TOO_DETAILED)
@@ -401,9 +415,13 @@ export function readSvgOutlines(text: string, tolerance = 0.02): SvgOutlines {
     }
     fromClip = rings.length > 0
   }
+  if (linesOnly) {
+    if (!lines.length) throw new SvgShapeError('This SVG has no open lines to use as veins. Draw the veins as lines or open paths, with a stroke and no fill.')
+    return { rings, units, open, fromClip, lines, page }
+  }
   if (!rings.length) {
     throw new SvgShapeError(open ? 'This SVG has only open lines. Close the outline (join its ends) so it encloses an area, and try again.'
       : pictures ? PICTURE_ONLY : 'This SVG has no closed outlines to use as a shape.')
   }
-  return { rings, units, open, fromClip }
+  return { rings, units, open, fromClip, lines, page }
 }
