@@ -1,5 +1,11 @@
 # Voronoi Studio Changelog
 
+## 1.13.2 2026-11-14
+
+- **A click on a point doesn't count as an edit.** A press now becomes a drag only once the pointer has moved 4 px, or 8 px with a finger, so clicking a point, or the small wobble of a hand or mouse while clicking, moves nothing. Before, a click on a point that moved it by nothing at all still marked the design as edited and unsaved and added an Undo step. This was Codex's retest finding R1: right after opening its project, the File tab showed unsaved changes and the status said "edited". Opening itself was always clean; the click was what counted. The Move picture tool works the same way.
+- **Choosing what's already chosen changes nothing.** Clicking the option already selected, or setting a value a setting already has, no longer marks the design as unsaved or adds an Undo step.
+- A fixed test project, `test-fixtures/zero-holes.voronoi.json` (200 × 200 mm, 300 cells, Holes with a 20 mm web, points saved), always leaves no hole, so Laser SVG and DXF are off with the reason. Codex's retest found that a 20 mm web on its own pattern left one hole. Tests now also check the DXF header's extents: they're the sheet's, even when the lines stop short of it.
+
 ## 1.13.1 2026-11-14
 
 - **Leaf veins follow Vein ends all the way to 60.** With **Join into loops** off, Leaf veins now have exactly as many ends as **Vein ends** says, and turning it up adds veins a few at a time. Before, the count moved in jumps. On a tall leaf-shaped sheet (363.8 × 630.1 mm, started from the bottom), 25 to 34 all gave 34 ends, and every setting from 35 up gave over 500, a mesh of tiny twigs that cut the pattern into 688 regions. Now 60 ends cut it into 46.

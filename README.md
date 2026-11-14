@@ -52,11 +52,11 @@ Narrower windows show tool and action buttons as symbols only. On tablets the sh
 1. **Sheet.** Choose a preset such as a 200 mm tile, A4, a 12 × 12 in laser sheet or a Ø 100 mm coaster, or type a size. Choose Rectangle or Ellipse and a border. Or press **Import SVG shape…**, or drop an SVG on the window, to fill your own outline; outlines inside it become holes.
 2. **Pattern.** Set the number of cells and the placement. Add a density gradient for cells that get smaller toward one side, the centre or the edge, or where a picture of yours is dark: choose **Picture**, or drop a photo on the window. Turn up **Stretch** for cells that grow longer in one direction, or along a flow: rings round a centre, waves, swirls, noise, the veins or a picture's contours.
 3. **Relax.** New patterns get a few relaxation steps. Press **Relax** for more, or **Auto-relax** to keep going until you stop it. While it's on, change the cell count, placement, gradient or sheet and watch the new pattern relax, or drag a point and watch the cells around it follow; the point stays under the pointer until you let go. Once the points settle it waits for your next change. Stop, Undo, Redo, New and Open turn it off.
-4. **Edit by hand.** Drag points to move cells, Alt-click (or the Add tool) to add one, Shift-click (or the Erase tool) to remove one. Once points are edited by hand, pattern settings wait for **Apply settings…** so your edits aren't lost by accident.
+4. **Edit by hand.** Drag points to move cells, Alt-click (or the Add tool) to add one, Shift-click (or the Erase tool) to remove one. A press only becomes a drag once the pointer has moved 4 px (8 px with a finger), so a click on a point moves nothing. Once points are edited by hand, pattern settings wait for **Apply settings…** so your edits aren't lost by accident.
 5. **Style.** **Lines** draws each edge once. **Holes** cuts each cell out, leaving a web of material, with rounded corners and a smallest-hole limit.
 6. **Check, save and export.** **Ready to cut?** on the File tab checks the design against your laser's kerf and your material's smallest web and smallest feature, and shows where any problem is. **Save** writes an editable `.voronoi.json` project with every point. **Laser SVG** and **DXF** are for cutting; **SVG** and **PNG** are for artwork.
 
-The app asks before New, Open, Generate or Apply settings would replace unsaved work or hand edits, and Undo can bring the previous design back. The current design is also kept in the browser, so it comes back after a reload or a crash. The copy is updated a moment after each change, at least every 2 seconds while Auto-relax runs, and when the tab closes.
+The app asks before New, Open, Generate or Apply settings would replace unsaved work or hand edits, and Undo can bring the previous design back. Only real changes count as unsaved: a project you've just opened or saved stays saved through clicks on points and choices of the option already chosen. The current design is also kept in the browser, so it comes back after a reload or a crash. The copy is updated a moment after each change, at least every 2 seconds while Auto-relax runs, and when the tab closes.
 
 ## Features
 
@@ -376,7 +376,7 @@ src/
   voronoi/             the engine, free of React: geometry, regions, imported shapes, seeding, density, pictures, diagram, relaxation, holes
   worker/              the Web Worker and its client
   *.test.ts            tests sit next to the code they test
-test-fixtures/         a sample project and SVG shapes the tests open
+test-fixtures/         sample projects (one that leaves no hole, for the cut-file rule) and SVG shapes the tests open
 local/                 QA probes and scratch files, not committed
 .github/workflows/     ci.yml (lint, test, build) and pages.yml (publish)
 ```

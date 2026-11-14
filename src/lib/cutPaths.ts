@@ -69,6 +69,14 @@ export function cutContents(s: CutSettings): string[] {
   return parts
 }
 
+// Why the File tab can't make a cut file yet, or false. holes: how many holes there are in Holes style, else null.
+export function cutProblem(s: CutSettings, holes: number | null): string | false {
+  if (!cutContents(s).length) return `Nothing to cut. Turn on Sites, ${s.cellStyle === 'holes' ? 'Holes' : 'Edges'} or Delaunay above the sheet, or include the sheet outline.`
+  // Holes on but none left: the cut file would hold no holes, only what's around them.
+  if (holes === 0 && s.showEdges) return 'No holes to cut: every cell is narrower than the smallest hole once the web is taken out. Lower the web width or the smallest hole on the Style tab.'
+  return false
+}
+
 // Which layer holds what, for the File tab. `sheetHoles`: the sheet is an imported shape with holes.
 export function cutLayers(s: CutSettings, sheetHoles: boolean): string[] {
   const inner = s.showEdges ? (s.cellStyle === 'holes' ? 'holes' : 'cell edges') : s.sheetOutline && sheetHoles ? "the shape's holes" : ''

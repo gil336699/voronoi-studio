@@ -172,6 +172,7 @@ export function useDesign(initial: () => { doc: Doc; saved: boolean }, onStatus:
   const change = useCallback((patch: Partial<Settings>, key?: string) => {
     const prev = docRef.current
     const { next, remake } = planChange(prev, patch)
+    if (next === prev) return // nothing changed
     apply(next, `settings:${key ?? Object.keys(patch).join(',')}`)
     if (remake) regenerate()
     else if (next.points !== prev.points) {

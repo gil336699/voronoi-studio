@@ -25,6 +25,9 @@ export function mapPoints(points: Float64Array, from: Region, to: Region): Float
 }
 
 export function planChange(prev: Doc, patch: Partial<Settings>): { next: Doc; remake: boolean } {
+  // Setting values that are already set changes nothing: the same design comes back, so there's no undo step and
+  // nothing unsaved. Before 1.13.2, choosing the option already chosen marked the design as having unsaved changes.
+  if ((Object.keys(patch) as (keyof Settings)[]).every(k => Object.is(patch[k], prev.settings[k]))) return { next: prev, remake: false }
   let settings = { ...prev.settings, ...patch }
   // Pixel sheets keep their pixel size when pixels per inch changes, so every length scales with it.
   if (patch.dpi !== undefined && prev.settings.units === 'px' && patch.dpi !== prev.settings.dpi) {

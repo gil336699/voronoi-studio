@@ -10,6 +10,18 @@ import type { Polygon } from '../voronoi/geometry'
 const doc = (over: Partial<Doc> = {}): Doc => ({ settings: DEFAULTS, points: runJob({ kind: 'generate', settings: DEFAULTS }).points, handEdited: false, stale: false, ...over })
 
 describe('what a settings change does to the points', () => {
+  // Before 1.13.2 a change to the values already set made a new design, so choosing the option already chosen, or a
+  // drag that didn't move the picture, marked a design that had just been opened or saved as having unsaved changes.
+  it('gives back the same design for a change that changes nothing, so nothing is unsaved', () => {
+    const prev = doc()
+    for (const patch of [{ veins: prev.settings.veins }, { count: prev.settings.count, cellStyle: prev.settings.cellStyle }, { pictureX: prev.settings.pictureX }, {}]) {
+      const { next, remake } = planChange(prev, patch)
+      expect(next).toBe(prev)
+      expect(remake).toBe(false)
+    }
+    expect(planChange(prev, { count: prev.settings.count + 1 }).next).not.toBe(prev)
+  })
+
   it('makes a new pattern for pattern settings, or waits if points were edited by hand', () => {
     expect(planChange(doc(), { count: 120 }).remake).toBe(true)
     const prev = doc({ handEdited: true })

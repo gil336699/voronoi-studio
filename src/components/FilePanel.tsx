@@ -1,5 +1,5 @@
 import { memo } from 'react'
-import { cutContents, cutLayers, listWords } from '../lib/cutPaths'
+import { cutContents, cutLayers, cutProblem, listWords } from '../lib/cutPaths'
 import { checkWords, summaryWords, type CheckId, type Preflight } from '../lib/preflight'
 import { pngProblem } from '../lib/render'
 import { RANGES, type Settings } from '../lib/settings'
@@ -22,10 +22,7 @@ export const FilePanel = memo(function FilePanel({ s, change, unsaved, busy, hol
   const fileUnits = s.units === 'in' ? 'inches' : 'millimetres'
   const working = busy && 'Wait for the pattern to finish updating.'
   const contents = cutContents(s)
-  const nothing = !contents.length ? `Nothing to cut. Turn on Sites, ${s.cellStyle === 'holes' ? 'Holes' : 'Edges'} or Delaunay above the sheet, or include the sheet outline.`
-    // Holes on but none left: the cut file would hold no holes, only what's around them.
-    : holes === 0 && s.showEdges ? 'No holes to cut: every cell is narrower than the smallest hole once the web is taken out. Lower the web width or the smallest hole on the Style tab.'
-      : false
+  const nothing = cutProblem(s, holes)
   const layers = cutLayers(s, s.shape === 'custom' && !!s.customShape && holeCount(s.customShape) > 0)
   const len = { units: s.units, dpi: s.dpi, small: true, inline: true }
   const problems = report ? report.checks.filter(c => !c.note).length : 0

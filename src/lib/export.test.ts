@@ -1,8 +1,10 @@
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { arcFromBulge, type Outline } from '../voronoi/holes'
 import { buildGeometry, patternRegion } from '../voronoi/pattern'
 import { seedPoints } from '../voronoi/seeding'
-import { cutContents, cutLayers, tidyOutline } from './cutPaths'
+import { cutContents, cutLayers, cutProblem, tidyOutline } from './cutPaths'
+import { parseProject } from './project'
 import { cutDxf, LAYER_DELAUNAY, LAYER_INNER, LAYER_OUTER, LAYER_SITES } from './dxfExport'
 import { DEFAULTS, seedSettings, type Settings } from './settings'
 import { artworkSvg, LASER_DELAUNAY, LASER_SITES, laserSvg, outlinePath } from './svgExport'
@@ -150,6 +152,22 @@ describe('SVG export', () => {
     expect(d.match(/A/g)?.length).toBe(g.holes[0].outline.points.length / 2)
     expect(d.endsWith('Z')).toBe(true)
   })
+
+  // A fixed project for the zero-hole rule, with its points saved: Codex's retest of 1.12.1 found that "Web width
+  // 20 mm" on its own A4 pattern left one hole, so the step needed a design that always gives none.
+  it('turns cut files off, with the reason, when Holes leaves no hole, in a fixed project', () => {
+    const { settings: s, points } = parseProject(readFileSync(new URL('../../test-fixtures/zero-holes.voronoi.json', import.meta.url), 'utf8'))
+    const g = buildGeometry(points, s)
+    expect([s.width, s.height, points.length / 2, s.cellStyle, s.web]).toEqual([200, 200, 300, 'holes', 20])
+    expect([g.holes.length, g.metrics.dropped]).toEqual([0, 300])
+    expect(cutProblem(s, g.holes.length)).toMatch(/^No holes to cut: /)
+    // A thinner web brings the holes and the cut files back; hiding Holes leaves only the outline, which can be cut.
+    const thin = { ...s, web: 2 }, back = buildGeometry(points, thin)
+    expect(back.holes.length).toBeGreaterThan(250)
+    expect(cutProblem(thin, back.holes.length)).toBe(false)
+    expect(cutProblem({ ...s, showEdges: false }, 0)).toBe(false)
+    expect(cutProblem({ ...s, showEdges: false, sheetOutline: false }, 0)).toMatch(/^Nothing to cut/)
+  })
 })
 
 describe('DXF export', () => {
@@ -163,6 +181,22 @@ describe('DXF export', () => {
     const header = pairs.findIndex(p => p[1] === '$INSUNITS')
     expect(pairs[header + 1]).toEqual([70, '4'])
     expect(pairs.some(p => p[0] === 8 && p[1] === LAYER_OUTER)).toBe(true)
+  })
+
+  // The header's extents are the sheet's, at its real size; the drawing can stop short of them (Codex's Fusion
+  // check measured 285.5 × 286.6 mm of lines on a 300 mm sheet, with no border cut), which isn't a scaling error.
+  it('writes the sheet as the header extents, in mm or inches', () => {
+    const value = (pairs: [number, string][], name: string) => { const i = pairs.findIndex(p => p[1] === name); return [Number(pairs[i + 1][1]), Number(pairs[i + 2][1])] }
+    const mm = design({ width: 300, height: 180, showSites: false, sheetOutline: false })
+    const a = dxfPairs(cutDxf(mm.g, mm.points, mm.s))
+    expect([value(a, '$EXTMIN'), value(a, '$EXTMAX')]).toEqual([[0, 0], [300, 180]])
+    const inch = design({ units: 'in', width: 254, height: 127 })
+    const b = dxfPairs(cutDxf(inch.g, inch.points, inch.s))
+    expect([value(b, '$EXTMIN'), value(b, '$EXTMAX')]).toEqual([[0, 0], [10, 5]])
+    // Every line lies inside the extents.
+    const xs = a.filter(p => p[0] === 10 || p[0] === 11).map(p => Number(p[1])), ys = a.filter(p => p[0] === 20 || p[0] === 21).map(p => Number(p[1]))
+    expect(Math.min(...xs)).toBeGreaterThanOrEqual(0); expect(Math.max(...xs)).toBeLessThanOrEqual(300)
+    expect(Math.min(...ys)).toBeGreaterThanOrEqual(0); expect(Math.max(...ys)).toBeLessThanOrEqual(180)
   })
 
   it('writes inches, lines and a true circle for round sheets', () => {

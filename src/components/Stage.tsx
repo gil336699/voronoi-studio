@@ -1,4 +1,5 @@
 import { type RefObject, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { isDrag } from '../lib/drag'
 import type { Marks } from '../lib/preflight'
 import { drawDesign, type Hover } from '../lib/render'
 import { densitySettings, stretchOf, type Settings } from '../lib/settings'
@@ -13,14 +14,17 @@ export type StageControls = { fit: () => void; zoomBy: (factor: number) => void 
 export type EditKind = 'move' | 'add' | 'erase'
 
 type View = { zoom: number; panX: number; panY: number }
+// Where a press went down on screen, and whether it has become a drag yet (see drag.ts): until then it moves nothing.
+type Press = { downX: number; downY: number; dragging: boolean }
 type Drag =
   | { kind: 'pan'; startX: number; startY: number; panX: number; panY: number }
-  | { kind: 'point'; index: number; dx: number; dy: number }
+  // A point being moved (or placed, just after Add, which counts as dragging from the start).
+  | ({ kind: 'point'; index: number; dx: number; dy: number } & Press)
   | { kind: 'erase'; last: number }
   | { kind: 'pinch'; distance: number; midX: number; midY: number; view: View; worldX: number; worldY: number }
   // The Move picture tool: dragging the picture, or one of its corners, from the settings it started with.
-  | { kind: 'picture-move'; startX: number; startY: number; from: PictureSettings; gesture: number }
-  | { kind: 'picture-size'; corner: number; from: PictureSettings; gesture: number }
+  | ({ kind: 'picture-move'; startX: number; startY: number; from: PictureSettings; gesture: number } & Press)
+  | ({ kind: 'picture-size'; corner: number; from: PictureSettings; gesture: number } & Press)
 
 const ZOOM_MIN = 0.25, ZOOM_MAX = 40
 const FIT_PADDING = 20
@@ -192,11 +196,12 @@ export function Stage({ geometry, points, settings, tool, marks, frameRef, contr
     const panning = tool === 'pan' || space.current || event.button === 1
     if (panning) { drag.current = { kind: 'pan', startX: event.clientX, startY: event.clientY, panX: view.panX, panY: view.panY }; setCursor('grabbing'); return }
     if (event.button !== 0) return
+    const press: Press = { downX: event.clientX, downY: event.clientY, dragging: false }
     if (tool === 'picture') {
       const from = pictureSettings
       const corner = cornerAt(x, y, hitRadius(event))
-      if (from && corner >= 0) { drag.current = { kind: 'picture-size', corner, from, gesture: ++gestures.current }; return }
-      if (from && insideFrame(x, y)) { drag.current = { kind: 'picture-move', startX: x, startY: y, from, gesture: ++gestures.current }; setCursor('grabbing'); return }
+      if (from && corner >= 0) { drag.current = { kind: 'picture-size', corner, from, gesture: ++gestures.current, ...press }; return }
+      if (from && insideFrame(x, y)) { drag.current = { kind: 'picture-move', startX: x, startY: y, from, gesture: ++gestures.current, ...press }; setCursor('grabbing'); return }
       // Outside the picture, dragging pans the view, as with the Move tool.
       drag.current = { kind: 'pan', startX: event.clientX, startY: event.clientY, panX: view.panX, panY: view.panY }
       setCursor('grabbing')
@@ -213,7 +218,7 @@ export function Stage({ geometry, points, settings, tool, marks, frameRef, contr
       next.set(live.current); next[next.length - 2] = px; next[next.length - 1] = py
       live.current = next
       onPoints(next, next.length / 2 - 1)
-      drag.current = { kind: 'point', index: next.length / 2 - 1, dx: 0, dy: 0 }
+      drag.current = { kind: 'point', index: next.length / 2 - 1, dx: 0, dy: 0, ...press, dragging: true }
       setCursor('grabbing')
       return
     }
@@ -225,9 +230,8 @@ export function Stage({ geometry, points, settings, tool, marks, frameRef, contr
     }
     const near = nearestPoint(live.current, x, y)
     if (near.index >= 0 && near.distance <= hitRadius(event)) {
-      onBeginEdit('move')
-      // Keep the grab offset so the point doesn't jump under the finger.
-      drag.current = { kind: 'point', index: near.index, dx: live.current[near.index * 2] - x, dy: live.current[near.index * 2 + 1] - y }
+      // Keep the grab offset so the point doesn't jump under the finger. The edit begins once the press is a drag.
+      drag.current = { kind: 'point', index: near.index, dx: live.current[near.index * 2] - x, dy: live.current[near.index * 2 + 1] - y, ...press }
       setCursor('grabbing')
       return
     }
@@ -250,6 +254,12 @@ export function Stage({ geometry, points, settings, tool, marks, frameRef, contr
       return
     }
     if (d?.kind === 'pan') { setView(v => ({ ...v, panX: d.panX + event.clientX - d.startX, panY: d.panY + event.clientY - d.startY })); return }
+    // A press moves nothing until it has moved far enough to be a drag (see drag.ts).
+    if ((d?.kind === 'point' || d?.kind === 'picture-move' || d?.kind === 'picture-size') && !d.dragging) {
+      if (!isDrag(event.clientX - d.downX, event.clientY - d.downY, event.pointerType)) return
+      d.dragging = true
+      if (d.kind === 'point') onBeginEdit('move')
+    }
     const [x, y] = toWorld(event.clientX, event.clientY)
     if (d?.kind === 'point') {
       const [px, py] = clampToRegion(geometry.region, x + d.dx, y + d.dy)
