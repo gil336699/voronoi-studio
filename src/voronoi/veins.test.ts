@@ -10,7 +10,7 @@ import { contains, regionArea, regionRings, type Region } from './region'
 import { relax } from './relax'
 import { seedPoints } from './seeding'
 import { veinsFromLines } from './veinLines'
-import { makeVeins, veinBase, type VeinSettings } from './veins'
+import { makeVeins, veinBase, type Vein, type VeinSettings } from './veins'
 import { shapeFromOutlines } from './shape'
 
 const flat = { mode: 'none' as const, strength: 1, angle: 0, invert: false }
@@ -107,6 +107,38 @@ describe('veins', () => {
     const s = { ...base, width: 200, height: 100, veins: 'imported' as const, veinLines: veins, border: 0 }
     expect(patternRegion(s).parts!.length).toBe(3)
     expect(() => readSvgOutlines('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="4" height="4"/></svg>', 0.02, true)).toThrow(/no open lines/)
+  })
+
+  it('narrows imported veins along the veins from Start from, so a branch begins as wide as the vein it leaves', () => {
+    const region: Region = { shape: 'rect', x0: 0, y0: 0, x1: 200, y1: 100 }
+    // The width at the point of a vein nearest (x, y), between its points as the strips are drawn.
+    const widthAt = (vein: Vein, x: number, y: number) => {
+      let best = Infinity, w = 0
+      for (let i = 0; i + 1 < vein.points.length; i++) {
+        const [a, b] = [vein.points[i], vein.points[i + 1]], ex = b[0] - a[0], ey = b[1] - a[1]
+        const t = Math.max(0, Math.min(1, ((x - a[0]) * ex + (y - a[1]) * ey) / (ex * ex + ey * ey || 1)))
+        const d = Math.hypot(x - a[0] - t * ex, y - a[1] - t * ey)
+        if (d < best) { best = d; w = vein.widths[i] + (vein.widths[i + 1] - vein.widths[i]) * t }
+      }
+      return w
+    }
+    // A trunk from the left edge, and a branch leaving it halfway, drawn from its far end toward the trunk.
+    const trunk: Polygon = [[0, 50], [200, 50]], branch: Polygon = [[160, 95], [100, 50]]
+    const v: VeinSettings = { style: 'imported', count: 8, start: 'left', width: 2, taper: 0.6, lines: [trunk, branch] }
+    const [t, b] = makeVeins(region, v)
+    expect(widthAt(t, 0, 50)).toBeCloseTo(2, 2)
+    expect(widthAt(t, 200, 50)).toBeLessThan(widthAt(t, 100, 50))
+    // The branch begins as wide as the trunk where it leaves it (before 1.12.0: 0.8 against 1.4) and narrows outward.
+    expect(Math.abs(widthAt(b, 100, 50) - widthAt(t, 100, 50))).toBeLessThan(0.05)
+    expect(widthAt(b, 160, 95)).toBeLessThan(widthAt(b, 100, 50))
+    // From the right, the trunk is widest at the right.
+    expect(widthAt(makeVeins(region, { ...v, start: 'right' })[0], 200, 50)).toBeCloseTo(2, 2)
+    // A line touching no other starts narrower the farther it is from the start.
+    const lone = makeVeins(region, { ...v, lines: [trunk, branch, [[150, 10], [190, 10]]] })[2]
+    expect(widthAt(lone, 150, 10)).toBeLessThan(1.6)
+    expect(widthAt(lone, 190, 10)).toBeLessThan(widthAt(lone, 150, 10))
+    // With no taper every line is Vein width all along.
+    expect(makeVeins(region, { ...v, taper: 0 }).every(vein => vein.widths.every(w => w === 2))).toBe(true)
   })
 
   it('thins the walls between smaller cells when walls follow cell size', () => {

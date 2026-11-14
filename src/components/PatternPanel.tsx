@@ -47,11 +47,13 @@ const STARTS: Option<VeinStart>[] = [
   { value: 'bottom', label: 'Bottom', tip: 'Veins start at the middle of the bottom.' },
   { value: 'centre', label: 'Centre', tip: 'Veins spread out from the centre in every direction.' },
 ]
+// For imported veins, Start from is where they're widest.
+const IMPORT_STARTS: Option<VeinStart>[] = STARTS.map(o => ({ ...o, tip: o.value === 'centre' ? 'Veins are widest nearest the centre and narrow along the lines from there.' : `Veins are widest nearest the middle of the ${o.value === 'left' || o.value === 'right' ? `${o.value} side` : o.value} and narrow along the lines from there.` }))
 const VEIN_HINT: Record<Exclude<VeinStyle, 'none'> | 'loops', string> = {
   wing: 'Each region between veins gets its own cells, as in an insect wing. Veins run side by side near the start and spread to the far edges.',
   leaf: 'Veins fan out from the start, branch, and run on to the edge, tapering as they go. Each region between them gets its own cells.',
   loops: 'Thinner veins grow between the main veins and join where they meet, like a leaf’s finer veins. Each loop gets its own cells.',
-  imported: 'Each region between your lines gets its own cells. Lines are as wide as Vein width at their start, narrowing by Taper.',
+  imported: 'Each region between your lines gets its own cells. Lines are as wide as Vein width nearest Start from, and narrow by Taper along the lines, branches included.',
 }
 // What the stretch follows. The two that need something else say so in the list.
 const stretchFields = (s: Settings): Option<FieldKind>[] => [
@@ -239,6 +241,8 @@ export const PatternPanel = memo(function PatternPanel({ s, change, stale, onApp
               onChange={veinCount => change({ veinCount }, 'veinCount')} />
             <Segmented label="Start from" options={STARTS} value={s.veinStart} onChange={veinStart => change({ veinStart }, 'veinStart')} />
           </>}
+          {s.veins === 'imported' && <Segmented label="Start from" options={IMPORT_STARTS} value={s.veinStart} onChange={veinStart => change({ veinStart }, 'veinStart')}
+            unavailable={s.veinTaper === 0 && 'With no taper, your lines are the same width all along. Turn up Taper first.'} />}
           <LengthField label="Vein width" mm={s.veinWidth} min={RANGES.veinWidth[0]} max={RANGES.veinWidth[1]} units={s.units} dpi={s.dpi} small
             tip="How wide veins are where they start. In Holes style, the web on each side adds to it." onChange={veinWidth => change({ veinWidth }, 'veinWidth')} />
           <SliderField label="Taper" value={s.veinTaper} min={RANGES.veinTaper[0]} max={RANGES.veinTaper[1]} step={5} format={v => `${v} %`}

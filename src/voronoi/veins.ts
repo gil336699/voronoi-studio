@@ -8,7 +8,8 @@
 //   which vanish once reached; the branches that feed the most tips are kept, as thick as the tips they feed.
 //   With loops (closed venation), veins from several sides head for each target and join there.
 // - Imported: open lines from an SVG.
-// Veins are as wide as Vein width at their start, narrowing by Taper toward their ends.
+// Veins are as wide as Vein width at their start, narrowing by Taper toward their ends. Wing and imported veins narrow
+// with distance along the veins from Start from.
 import { differenceD, EndType, FillRule, inflatePathsD, intersectD, JoinType, simplifyPathsD, unionD, type PathD, type PathsD } from 'clipper2-ts'
 import { signedArea, type Polygon, type Vec } from './geometry'
 import { createRng } from './random'
@@ -606,19 +607,121 @@ function simplify(points: Vec[], widths: number[], tol: number, fixed: Iterable<
 
 const length = (p: Vec[]) => p.reduce((s, q, i) => (i ? s + Math.hypot(q[0] - p[i - 1][0], q[1] - p[i - 1][1]) : 0), 0)
 
+// ---------- imported: widths along the veins ----------
+
+// A binary min-heap of indices keyed by distance, for the shortest paths below.
+class MinHeap {
+  private items: number[] = []
+  private keys: number[] = []
+  get size() { return this.items.length }
+  push(item: number, key: number) {
+    const { items, keys } = this
+    let i = items.length
+    items.push(item); keys.push(key)
+    while (i > 0) {
+      const p = (i - 1) >> 1
+      if (keys[p] <= key) break
+      items[i] = items[p]; keys[i] = keys[p]; i = p
+    }
+    items[i] = item; keys[i] = key
+  }
+  pop(): [number, number] {
+    const { items, keys } = this
+    const top: [number, number] = [items[0], keys[0]]
+    const item = items.pop()!, key = keys.pop()!
+    if (items.length) {
+      let i = 0
+      for (;;) {
+        const l = 2 * i + 1, r = l + 1
+        let m = i, mk = key
+        if (l < items.length && keys[l] < mk) { m = l; mk = keys[l] }
+        if (r < items.length && keys[r] < mk) { m = r; mk = keys[r] }
+        if (m === i) break
+        items[i] = items[m]; keys[i] = keys[m]; i = m
+      }
+      items[i] = item; keys[i] = key
+    }
+    return top
+  }
+}
+
+// Imported veins narrow with distance along the veins from Start from, as Wing veins do. The lines are joined where
+// they meet: an end on another line, two lines crossing, or lines close enough that their strips touch. Each point is
+// as far along as its shortest path over the lines to the point nearest the start. A group of lines that touches
+// none of the others starts at its own point nearest the start, as far along as that point is from it, so the whole
+// set narrows outward together. Before 1.12.0 each line narrowed on its own from its first point, so a branch began
+// as wide as the vein at the start, wider than the vein it left.
+function importedVeins(region: Region, v: VeinSettings, taper: number, tol: number): Vein[] {
+  const lines = (v.lines ?? []).filter(l => l.length >= 2)
+  if (!(taper > 0)) return lines.map(line => simplify(line, line.map(() => v.width), tol))
+  const step = Math.max(regionWidth(region), regionHeight(region)) / 400
+  // Points along each line at most a step apart, keeping the line's own corners.
+  const pts: Vec[] = [], lineOf: number[] = [], spans: [number, number][] = []
+  lines.forEach((line, li) => {
+    const first = pts.length
+    line.forEach((q, k) => {
+      if (k) {
+        const a = line[k - 1], n = Math.ceil(Math.hypot(q[0] - a[0], q[1] - a[1]) / step)
+        for (let i = 1; i < n; i++) { pts.push([a[0] + ((q[0] - a[0]) * i) / n, a[1] + ((q[1] - a[1]) * i) / n]); lineOf.push(li) }
+      }
+      pts.push(q); lineOf.push(li)
+    })
+    spans.push([first, pts.length - 1])
+  })
+  const N = pts.length, reach = Math.max(1.5 * step, 0.75 * v.width)
+  const adj: number[][] = Array.from({ length: N }, () => [])
+  for (const [a, b] of spans) for (let i = a; i < b; i++) { adj[i].push(i + 1); adj[i + 1].push(i) }
+  const cell = (x: number) => Math.floor(x / reach), grid = new Map<string, number[]>()
+  pts.forEach(([x, y], i) => { const k = `${cell(x)},${cell(y)}`, c = grid.get(k); if (c) c.push(i); else grid.set(k, [i]) })
+  pts.forEach(([x, y], i) => {
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++)
+      for (const j of grid.get(`${cell(x) + dx},${cell(y) + dy}`) ?? [])
+        if (j > i && lineOf[j] !== lineOf[i] && Math.hypot(pts[j][0] - x, pts[j][1] - y) <= reach) { adj[i].push(j); adj[j].push(i) }
+  })
+  // Each joined group starts at its point nearest the start; then shortest paths over the lines.
+  const base = veinBase(region, v.start), dist = new Float64Array(N).fill(Infinity), group = new Int32Array(N).fill(-1), heap = new MinHeap()
+  let groups = 0
+  for (let s = 0; s < N; s++) {
+    if (group[s] >= 0) continue
+    const stack = [s]; group[s] = groups
+    let nearest = s, nd = Infinity
+    while (stack.length) {
+      const i = stack.pop()!, d = Math.hypot(pts[i][0] - base[0], pts[i][1] - base[1])
+      if (d < nd) { nd = d; nearest = i }
+      for (const j of adj[i]) if (group[j] < 0) { group[j] = groups; stack.push(j) }
+    }
+    dist[nearest] = nd; heap.push(nearest, nd); groups++
+  }
+  while (heap.size) {
+    const [i, d] = heap.pop()
+    if (d > dist[i]) continue
+    for (const j of adj[i]) {
+      const nd = d + Math.hypot(pts[j][0] - pts[i][0], pts[j][1] - pts[i][1])
+      if (nd < dist[j]) { dist[j] = nd; heap.push(j, nd) }
+    }
+  }
+  // Full width at the point nearest the start, Taper narrower at the farthest.
+  let lo = Infinity, hi = 0
+  for (let i = 0; i < N; i++) { if (dist[i] < lo) lo = dist[i]; if (dist[i] > hi) hi = dist[i] }
+  const span = hi - lo || 1
+  return spans.map(([a, b]) => {
+    const points = pts.slice(a, b + 1), widths = points.map((_, k) => v.width * (1 - (taper * (dist[a + k] - lo)) / span))
+    // Keep the points where the distance turns, as at a junction nearer the start than either end.
+    const fixed: number[] = []
+    for (let k = 1; k < points.length - 1; k++) {
+      const p = dist[a + k - 1], q = dist[a + k], r = dist[a + k + 1]
+      if ((q < p && q <= r) || (q > p && q >= r)) fixed.push(k)
+    }
+    return simplify(points, widths, tol, fixed)
+  })
+}
+
 export function makeVeins(region: Region, v: VeinSettings): Vein[] {
   if (v.style === 'none' || !(v.width > 0) || (region.shape === 'custom' && !region.rings?.length)) return []
   const taper = Math.min(0.95, Math.max(0, v.taper))
   const size = Math.max(regionWidth(region), regionHeight(region))
   const tol = size / 4000
-  if (v.style === 'imported') {
-    return (v.lines ?? []).filter(l => l.length >= 2).map(line => {
-      const L = length(line) || 1
-      let s = 0
-      const widths = line.map((q, i) => { if (i) s += Math.hypot(q[0] - line[i - 1][0], q[1] - line[i - 1][1]); return v.width * (1 - taper * (s / L)) })
-      return simplify(line, widths, tol)
-    })
-  }
+  if (v.style === 'imported') return importedVeins(region, v, taper, tol)
   const base = veinBase(region, v.start)
   const count = Math.max(1, Math.round(v.count))
   if (v.style === 'leaf') {

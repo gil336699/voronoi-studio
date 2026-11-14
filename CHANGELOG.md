@@ -1,5 +1,11 @@
 # Voronoi Studio Changelog
 
+## 1.12.0 2026-11-14
+
+- **Imported veins taper along the veins.** With **Taper** on, imported veins now narrow with distance along the veins from **Start from**, as Wing veins do. A branch begins as wide as the vein it leaves, and the finest veins out at the margin are the thinnest, so a traced insect wing looks like one. Before, each line narrowed on its own from its first point: a branch started as wide as the veins at the base, wider than the vein it left, and a line drawn from the margin inward was widest at the margin.
+- **Start from works for imported veins.** It sets where they're widest. With Taper at 0 it's unavailable, and says why.
+- Designs with imported veins and a taper open with the new widths. Everything else is unchanged: 288 of 288 whole-pipeline setups, 270 of 270 seeding setups and 288 of 288 field setups match 1.11.0, and so do all 12 imported-vein setups at Taper 0.
+
 ## 1.11.0 2026-11-14
 
 - **Along the veins reaches the whole sheet.** Cells now run along every vein and turn smoothly from one vein to the next, the way wood grain bends between knots, so they follow the veins right across each region, not just beside them. Only patches where veins meet at a steep angle stay round, since a cell there can't line up with both. Before, each place took the direction of the nearest vein, which jumped where two veins were equally near, so between veins and inside Leaf loops cells stayed round. With eight Leaf loops and 1,200 cells, 60 % of the sheet followed the veins; now 89 %, and 89 % of the relaxed cells are at least twice as long as wide (was 64 %). With Wing or open Leaf veins it's 99–100 % (was 91–98 %).
