@@ -5,9 +5,9 @@ import { ellipsePolygon, type Polygon, type Vec } from './geometry'
 import { boxOf, cachedOffset, ringsArea, ringsPerimeter, shapeIndex, shapeRings, type CustomShape } from './shape'
 
 export type Shape = 'rect' | 'ellipse' | 'custom'
-// parts, veins and lines: a region split by veins (see veins.ts) lists each piece's rings, outer outline first, the
-// veins' own outline and their centre lines. Its rings are then every piece's rings together.
-export type Region = { shape: Shape; x0: number; y0: number; x1: number; y1: number; rings?: Polygon[]; parts?: Polygon[][]; veins?: Polygon[]; lines?: Polygon[] }
+// parts, veins, lines and widths: a region split by veins (see veins.ts) lists each piece's rings, outer outline first,
+// the veins' own outline, their centre lines and each line point's width. Its rings are then every piece's rings together.
+export type Region = { shape: Shape; x0: number; y0: number; x1: number; y1: number; rings?: Polygon[]; parts?: Polygon[][]; veins?: Polygon[]; lines?: Polygon[]; widths?: number[][] }
 
 const ELLIPSE_SEGMENTS = 256
 

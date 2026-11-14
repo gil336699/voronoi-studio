@@ -790,7 +790,7 @@ export function veinStrips(veins: Vein[]): Polygon[] {
 
 // The pattern with its veins taken out: one region whose rings are every remaining piece, with each piece
 // listed in `parts` (outer outline first, then its holes), the veins' own outline in `veins` and their centre
-// lines in `lines` (Along the veins follows those).
+// lines in `lines` (Along the veins follows those), with their widths in `widths` (Ready to cut? checks those).
 export function splitByVeins(region: Region, veins: Vein[]): Region {
   if (!veins.length) return region
   const strips = veinStrips(veins)
@@ -804,7 +804,7 @@ export function splitByVeins(region: Region, veins: Vein[]): Region {
   const shape = fromPaths(intersectD(strips.map(toPath), rings.map(toPath), FillRule.EvenOdd, PRECISION))
   const all = parts.flat()
   const [x0, y0, x1, y1] = all.length ? boxOf(all) : [region.x0, region.y0, region.x1, region.y1]
-  return { shape: 'custom', x0, y0, x1, y1, rings: all, parts, veins: shape, lines: veins.map(v => v.points) }
+  return { shape: 'custom', x0, y0, x1, y1, rings: all, parts, veins: shape, lines: veins.map(v => v.points), widths: veins.map(v => v.widths) }
 }
 
 // The last few splits, so the worker's relax steps and the page's redraws reuse them.

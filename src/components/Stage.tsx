@@ -1,4 +1,5 @@
 import { type RefObject, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import type { Marks } from '../lib/preflight'
 import { drawDesign, type Hover } from '../lib/render'
 import { densitySettings, stretchOf, type Settings } from '../lib/settings'
 import { boxCorners, pictureBox, resizePicture, type PictureSettings } from '../voronoi/picture'
@@ -27,11 +28,12 @@ const FIT_PADDING = 20
 // The sheet preview. It fills the window behind the panels and fits the sheet into the free area between
 // them (the frame). Pointer input edits points: drag to move, Alt-click to add, Shift-click to erase,
 // Space or the Pan tool to pan, wheel or pinch to zoom.
-export function Stage({ geometry, points, settings, tool, frameRef, controlRef, onBeginEdit, onPoints, onRelease, onZoom, onNotice, onPicture }: {
+export function Stage({ geometry, points, settings, tool, marks, frameRef, controlRef, onBeginEdit, onPoints, onRelease, onZoom, onNotice, onPicture }: {
   geometry: Geometry
   points: Float64Array
   settings: Settings
   tool: Tool
+  marks: Marks | null // where a Ready to cut? check found problems, while its row is pointed at or pinned
   frameRef: RefObject<HTMLDivElement | null>
   controlRef: RefObject<StageControls | null>
   onBeginEdit: (kind: EditKind) => void
@@ -101,10 +103,10 @@ export function Stage({ geometry, points, settings, tool, frameRef, controlRef, 
     if (!ctx) return
     ctx.setTransform(1, 0, 0, 1, 0, 0)
     ctx.clearRect(0, 0, w, h)
-    drawDesign(ctx, geometry, points, settings, { scale, ox, oy, dpr, preview: true, hover, frame })
+    drawDesign(ctx, geometry, points, settings, { scale, ox, oy, dpr, preview: true, hover, frame, marks })
     // Read-only view state for QA scripts in development builds.
     if (import.meta.env.DEV) (window as unknown as { __stage: unknown }).__stage = { scale, ox, oy, points, rect: box.current?.getBoundingClientRect() }
-  }, [geometry, points, settings, scale, ox, oy, size, hover, frame])
+  }, [geometry, points, settings, scale, ox, oy, size, hover, frame, marks])
 
   const toWorld = useCallback((clientX: number, clientY: number) => {
     const r = box.current!.getBoundingClientRect()

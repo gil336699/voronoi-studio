@@ -32,7 +32,7 @@ Each push to `main` builds the app and publishes it to GitHub Pages through `.gi
 The sheet fills the window, and the controls float above it on translucent glass, in the style of Apple's Liquid Glass. The look follows the system's light or dark appearance, and its Reduce transparency and Increase contrast settings. In Windows contrast themes, buttons, switches and sliders are drawn in the theme's own colours.
 
 - **Top left.** The app name and the **?** button for shortcuts and the quick start.
-- **Left panel.** Four tabs: **Pattern** (cells, placement, gradient, stretch, veins, relaxation), **Sheet** (size, units, shape or imported outline, border), **Style** (Lines or Holes, colours) and **File** (project and exports). A dot on Pattern means hand edits are holding back new settings; a dot on File means unsaved changes.
+- **Left panel.** Four tabs: **Pattern** (cells, placement, gradient, stretch, veins, relaxation), **Sheet** (size, units, shape or imported outline, border), **Style** (Lines or Holes, colours) and **File** (project, **Ready to cut?** and exports). A dot on Pattern means hand edits are holding back new settings; a dot on File means unsaved changes.
 - **Above the sheet.** Tools (Move, Add, Erase, Pan, and Move picture with a Picture gradient) on the left. Sites, Edges or Holes, Delaunay, Picture (with a Picture gradient), and zoom on the right. A caption explains the current tool.
 - **Below the sheet.** The action dock: **Generate**, **Relax**, **Auto-relax**, the status, and Undo and Redo.
 - **Right panel.** **Measurements**: sheet size, cells, holes, average cell size, evenness, the narrowest hole or shortest edge, and total cut length.
@@ -43,6 +43,7 @@ Narrower windows show tool and action buttons as symbols only. On tablets the sh
 
 - **Hover any control**, or move to it with Tab, to see a one-sentence description and its keyboard shortcut. Unavailable controls say why, for example why the cell count is locked when you set the spacing yourself.
 - **Measurements with a dotted underline** explain themselves on hover.
+- **Ready to cut?** rows on the File tab light their problems up on the sheet when you point at them, and their tooltips say what to change.
 - **A number past a field's limit** is set to the nearest value allowed, and the field says so for a few seconds.
 - **Quick start** shows three steps on the first visit. Reopen it from the **?** button, which also lists every shortcut.
 
@@ -53,7 +54,7 @@ Narrower windows show tool and action buttons as symbols only. On tablets the sh
 3. **Relax.** New patterns get a few relaxation steps. Press **Relax** for more, or **Auto-relax** to keep going until you stop it. While it's on, change the cell count, placement, gradient or sheet and watch the new pattern relax, or drag a point and watch the cells around it follow; the point stays under the pointer until you let go. Once the points settle it waits for your next change. Stop, Undo, Redo, New and Open turn it off.
 4. **Edit by hand.** Drag points to move cells, Alt-click (or the Add tool) to add one, Shift-click (or the Erase tool) to remove one. Once points are edited by hand, pattern settings wait for **Apply settings…** so your edits aren't lost by accident.
 5. **Style.** **Lines** draws each edge once. **Holes** cuts each cell out, leaving a web of material, with rounded corners and a smallest-hole limit.
-6. **Save and export.** **Save** writes an editable `.voronoi.json` project with every point. **Laser SVG** and **DXF** are for cutting; **SVG** and **PNG** are for artwork.
+6. **Check, save and export.** **Ready to cut?** on the File tab checks the design against your laser's kerf and your material's smallest web and smallest feature, and shows where any problem is. **Save** writes an editable `.voronoi.json` project with every point. **Laser SVG** and **DXF** are for cutting; **SVG** and **PNG** are for artwork.
 
 The app asks before New, Open, Generate or Apply settings would replace unsaved work or hand edits, and Undo can bring the previous design back. The current design is also kept in the browser, so it comes back after a reload or a crash. The copy is updated a moment after each change, at least every 2 seconds while Auto-relax runs, and when the tab closes.
 
@@ -167,6 +168,27 @@ Long cells leave long, thin webs between them, so a stretched panel is stiffer a
 
 **Walls follow cell size** (Style tab) thins the web between smaller cells, as a wing's veins thin out where its cells are small: at 100 %, cells half as wide get a web half as thick, down to 15 %. In Lines style it varies the line width in the view, PNG and artwork SVG; laser files keep hairlines.
 
+### Ready to cut?
+
+The File tab checks the cut files against your machine before you export. Give it your laser's **Kerf** and your material's **Smallest web** and **Smallest feature** (0.15, 1 and 0.5 mm to start). They're saved with the project, shown in the sheet's unit, and kept when you press New.
+
+| Check | Style | Counted when | Change |
+| --- | --- | --- | --- |
+| Cells left solid | Holes | a cell is narrower than Smallest hole once the web is taken out, so it has no hole | Web width or Smallest hole, or relax |
+| Webs the laser burns away | Holes | the material between two holes, or between a hole and the sheet outline when the outline is cut, is no wider than the kerf | Web width, Walls follow cell size, Border |
+| Webs under the smallest web | Holes | that material is wider than the kerf but thinner than the smallest web | the same |
+| Holes under the smallest feature | Holes | a hole is narrower than the smallest feature | raise Smallest hole to leave them solid, or use fewer cells |
+| Cuts shorter than the smallest feature | Lines | an edge is between 5 µm and the smallest feature long: the laser makes it as a dot | relax |
+| Cells narrower than the smallest web | Lines | a cell, cut out as a piece, is narrower than the smallest web | relax, or use fewer cells |
+| Border under the smallest web | Lines | the frame between the pattern and the cut sheet outline is thinner than the smallest web | Border, or Include the sheet outline |
+| Veins under the smallest web | Lines | a vein, cut along both sides, narrows below the smallest web | Vein width or Taper, or use Holes |
+| Outlines that cross themselves, holes too small for the files | Holes | shown only if there are any | Corner radius or Smallest hole |
+| Sites or Delaunay lines in the cut files | both | they're shown, so the files hold them as marks on their own layers | set those layers to score or off, or hide them |
+
+Point at a row and its problems light up in orange on the sheet, each with a ring round it, so even a 0.1 mm web shows at full view. Click the row to keep them shown while you change settings on other tabs; Esc clears it. It only warns: every export stays available, except that Laser SVG and DXF stay off when Holes leaves no hole.
+
+Webs are measured between the hole outlines as drawn. A convex hole is its core grown by its corner radius, so the gap between two is exact; holes in cells clipped by an imported outline or a vein are measured on their outlines. The kerf isn't taken off: a web drawn 1 mm wide is about 0.85 mm once cut with a 0.15 mm kerf, so set Smallest web to the narrowest web you'd draw.
+
 ### Exports
 
 | Export | Contents | Units |
@@ -175,7 +197,7 @@ Long cells leave long, thin webs between them, so a stretched panel is stiffer a
 | DXF | AutoCAD R12 text. Holes as closed polylines whose rounded corners are true arcs, lines as LINE, round sheets as CIRCLE, imported outlines as polylines. Layers `CUT_INNER` (red) and `CUT_OUTER` (blue); when shown, sites as CIRCLE on `SITES` (green) and Delaunay lines as LINE on `DELAUNAY` (magenta). | mm, or in for inch sheets |
 | SVG | The design as shown: colours, line width, fill, background, sites and Delaunay lines if visible, and the density picture in group `picture` if shown. | mm, in, or px for pixel sheets |
 | PNG | The design at the sheet's pixels per inch, with the density picture if shown, optionally with a transparent background. | px |
-| Project | Settings, every point, any imported shape and any density picture, as `.voronoi.json` (schema `voronoi-studio/project`, version 5, with any veins; versions 1 to 4 open too). | mm |
+| Project | Settings, every point, any imported shape, any density picture and veins, and the machine values for Ready to cut?, as `.voronoi.json` (schema `voronoi-studio/project`, version 6; versions 1 to 5 open too). | mm |
 
 Every export holds what the view shows: the **Sites**, **Edges** or **Holes**, and **Delaunay** buttons above the sheet decide what goes in, so turn Sites off for a file with only cuts. The density picture goes in the SVG and PNG when shown, but never in Laser SVG or DXF, where laser software would engrave it. The File tab lists what a cut file will hold. Cut files contain each line once, so a laser never cuts the same edge twice, and leave out cuts shorter than 5 µm, which a laser would only fire as a dot; hole outlines have no piece shorter than 10 µm. Every stroke has round caps and joins. With Holes and no cell big enough for a hole, Laser SVG and DXF are off, and the File tab says why. Exports always show the whole sheet, whatever the zoom.
 
@@ -208,6 +230,7 @@ Exports and Save use the system save dialog where the browser has one, and downl
 | Veins, Join into loops, Loops or Vein ends, Start from, Vein width, Taper, Import veins… | Veins that split the sheet into regions (see Veins above). |
 | Walls follow cell size | Thinner web or lines between smaller cells (0–100 %). |
 | Sites, Edges or Holes, Delaunay, Picture | Show or hide each part of the design, in the view and in every export (the picture stays out of cut files). |
+| Kerf, Smallest web, Smallest feature | File tab, Ready to cut?: the laser and material values the cut files are checked against. Saved with the project; New keeps them. |
 
 ## Keyboard shortcuts
 
@@ -310,11 +333,24 @@ Veins, measured the same way (Node, one relax step / one rebuild of the drawing;
 
 Most cells touch a vein and are clipped against it, so veins make relaxing several times slower. Up to a couple of thousand cells it stays usable; beyond that, set the relax steps and press Relax.
 
+Ready to cut?, measured in Node (best of 5) and in the app (production build, headless Chrome, Auto-relax best of 3 runs of 8 s):
+
+| Task | 300 cells | 2,000 cells | 10,000 cells |
+| --- | --- | --- | --- |
+| Check, Holes with every web under the smallest web (Node) | 1.7 ms | 10.9 ms | 54 ms |
+| Check, Holes with Leaf loops (Node) | 2.8 ms | 11.1 ms | 50 ms |
+| Check, Lines with Leaf loops (Node) | 0.6 ms | 1.7 ms | 6.3 ms |
+| Auto-relax, Holes with a 0.6 mm web, File tab closed and open (app) | — | 52.8 and 51.4 steps/s | 6.2 and 5.6 steps/s |
+
+While the design keeps changing, the check is redone at most every 250 ms, or every eight times its own time, and once more when the changes stop.
+
 Patterns up to a few thousand cells stay smooth. With Auto-relax on while you drag the Cells slider, it kept relaxing at 45 steps/s with nearly 3,900 cells (production build, headless Chrome). At 10,000 cells, editing by hand and auto-relaxing are slow; set the relax steps and press Relax instead.
 
 - Up to 10,000 cells can be typed; spacing-driven placements stop at 20,000 points.
 - PNG export is limited to 16,384 px a side and 120 megapixels, which browsers can draw. Use SVG for larger work.
 - Cut files are not reordered to shorten laser travel.
+- Ready to cut? measures a concave hole's width across its convex outline, so it can miss a narrow neck in a hole clipped by an imported outline or a vein. A vein's width is the vein's own; where veins merge, the strip is wider than either.
+- Ready to cut? can't see your laser software's settings: if it offsets cuts for the kerf, set Kerf to 0.
 - The live design is kept in the browser's local storage; clearing site data removes it. Save a project file to keep work. A density picture adds about 260 kB to it.
 - Leaf veins come from a fixed set of targets for each setting, so Shuffle changes the cells but not the veins.
 - A field that turns within a few cells' length can't be followed by cells that size: they stay round there, and the hint says how much of the sheet follows. Relaxing with a field is two to five times slower than with one direction.
@@ -334,8 +370,9 @@ npm run build       # typecheck and build to dist/
 src/
   App.tsx              layout, files and keyboard shortcuts
   useDesign.ts         the design state: undo, unsaved changes, worker jobs, auto-relax
+  usePreflight.ts      Ready to cut?'s report, kept up to date without slowing Auto-relax
   components/          panels, bars, stage (canvas and pointer input), tooltip, tabs, modal, icons
-  lib/                 settings, units, presets, project files, history, rendering, SVG import and export, DXF, change rules, picture files
+  lib/                 settings, units, presets, project files, history, rendering, SVG import and export, DXF, change rules, picture files, Ready to cut? checks
   voronoi/             the engine, free of React: geometry, regions, imported shapes, seeding, density, pictures, diagram, relaxation, holes
   worker/              the Web Worker and its client
   *.test.ts            tests sit next to the code they test

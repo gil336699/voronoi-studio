@@ -43,6 +43,9 @@ export type Settings = {
   showSites: boolean; showEdges: boolean; showDelaunay: boolean; showPicture: boolean
   // Export
   transparentPng: boolean; sheetOutline: boolean
+  // Ready to cut? (File tab): the laser's kerf and the material's smallest web and smallest feature, in mm. They
+  // describe the machine, not the design: nothing here changes the pattern or the files, only what's checked.
+  kerf: number; smallestWeb: number; smallestFeature: number
 }
 
 export const DEFAULTS: Settings = {
@@ -60,6 +63,7 @@ export const DEFAULTS: Settings = {
   lineWidth: 0.3, lineColor: '#7a0f1f', fill: false, fillColor: '#f4d6da', background: '#ffffff',
   showSites: true, showEdges: true, showDelaunay: false, showPicture: true,
   transparentPng: false, sheetOutline: true,
+  kerf: 0.15, smallestWeb: 1, smallestFeature: 0.5,
 }
 
 type NumericKey = { [K in keyof Settings]: Settings[K] extends number ? K : never }[keyof Settings]
@@ -70,7 +74,12 @@ export const RANGES: Record<NumericKey, [number, number]> = {
   stretch: [1, 5], stretchAngle: [0, 180], stretchTurn: [0, 90], stretchCentreX: [0, 100], stretchCentreY: [0, 100],
   stretchWaves: [1, 12], stretchSwing: [0, 80], stretchCells: [1, 8], stretchScale: [1, 12], stretchSeed: [0, 999_999], veinCount: [2, 60], veinWidth: [0.05, 50], veinTaper: [0, 90], relaxSteps: [0, 50],
   web: [0, 100], cornerRadius: [0, 100], minHole: [0, 200], lineWidth: [0.005, 20], wallsFollow: [0, 100],
+  kerf: [0, 5], smallestWeb: [0, 50], smallestFeature: [0, 50],
 }
+
+// The machine values, which New keeps: they belong to the laser and material, not to one design.
+export const machineOf = ({ kerf, smallestWeb, smallestFeature }: Settings): Pick<Settings, 'kerf' | 'smallestWeb' | 'smallestFeature'> =>
+  ({ kerf, smallestWeb, smallestFeature })
 
 const CHOICES = {
   units: ['mm', 'in', 'px', 'pc'], shape: ['rect', 'ellipse', 'custom'], placement: ['random', 'even', 'hex', 'square'],

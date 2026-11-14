@@ -7,7 +7,9 @@ export const SCHEMA = 'voronoi-studio/project'
 // Version 2 added imported sheet shapes (settings.customShape), version 3 density pictures
 // (settings.densityPicture), version 4 stretched cells (settings.stretch), version 5 veins
 // (settings.veins, settings.veinLines) and version 6 stretch that follows a field (settings.stretchField).
-// Older files open unchanged.
+// Older files open unchanged. The machine values for Ready to cut? (settings.kerf, smallestWeb, smallestFeature,
+// 1.13.0) came without a new version: they don't change the design, so older apps open the same design and only
+// drop those three numbers, and files from before them open with the defaults.
 export const VERSION = 6
 export const EXTENSION = '.voronoi.json'
 

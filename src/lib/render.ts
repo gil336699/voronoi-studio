@@ -1,11 +1,12 @@
 // Draws a design on a 2D canvas, for the on-screen preview and for PNG export. World units are
 // millimetres; the caller passes the scale (pixels per millimetre) and offset.
-import type { Segment } from '../voronoi/geometry'
+import type { Polygon, Segment } from '../voronoi/geometry'
 import { arcFromBulge, type Outline } from '../voronoi/holes'
 import type { Geometry } from '../voronoi/pattern'
 import { boxCorners, type PictureBox } from '../voronoi/picture'
 import { regionCenter, regionHeight, regionWidth, type Region } from '../voronoi/region'
 import { PICTURE_OPACITY, pictureCanvas, shownPicture } from './pictureLayer'
+import type { Marks } from './preflight'
 import { DELAUNAY_COLOR, SITE_COLOR, siteRadius, widthBuckets } from './style'
 import type { Settings } from './settings'
 
@@ -16,11 +17,16 @@ export type DrawOptions = {
   hover?: Hover
   transparent?: boolean
   frame?: PictureBox | null // the picture's outline and corner handles, while the Move picture tool is on
+  marks?: Marks | null // where a Ready to cut? check found problems, while its row is pointed at or pinned
 }
 
 const PREVIEW_MIN_LINE = 0.75 // css px
 const HOVER = '#0a84ff'
 const ERASE = '#ff3b30'
+const MARK = '#ff9500' // Ready to cut? highlights, the warning orange
+const MARK_HALO = 'rgba(255, 255, 255, .92)'
+const MARK_RING = 8 // css px: the smallest marker, so a problem smaller than a pixel still shows at fit zoom
+const MARK_RINGS_MAX = 1500 // above this many, markers are dots, which draw many times faster
 
 // Adds the region's outline to the current path. Fill and clip it with 'evenodd', so a custom shape's holes stay open.
 export function regionPath(ctx: CanvasRenderingContext2D, r: Region) {
@@ -140,8 +146,41 @@ export function drawDesign(ctx: CanvasRenderingContext2D, g: Geometry, points: F
   }
   ctx.restore()
 
+  if (o.preview && o.marks) drawMarks(ctx, o.marks, px)
   if (o.preview && o.hover) drawHover(ctx, g, points, o.hover, px)
   if (o.preview && o.frame) drawFrame(ctx, o.frame, px)
+}
+
+// A Ready to cut? check's problems: cells filled, outlines and lines drawn in orange over a white halo, and a ring
+// round each spot, at least MARK_RING px across.
+function drawMarks(ctx: CanvasRenderingContext2D, m: Marks, px: number) {
+  ctx.save()
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round'
+  const ringsPath = (rings: Polygon[]) => { for (const ring of rings) { ring.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.closePath() } }
+  const haloed = (path: () => void, width: number) => {
+    ctx.beginPath(); path()
+    ctx.lineWidth = width + 2.5 * px; ctx.strokeStyle = MARK_HALO; ctx.stroke()
+    ctx.lineWidth = width; ctx.strokeStyle = MARK; ctx.stroke()
+  }
+  if (m.cells?.length) {
+    ctx.beginPath()
+    for (const cell of m.cells) ringsPath(cell)
+    ctx.fillStyle = 'rgba(255, 149, 0, .3)'; ctx.fill('evenodd')
+    ctx.lineWidth = 1.5 * px; ctx.strokeStyle = MARK; ctx.stroke()
+  }
+  if (m.rings?.length) haloed(() => ringsPath(m.rings!), 3 * px)
+  if (m.outlines?.length) haloed(() => { for (const outline of m.outlines!) outlinePath(ctx, outline) }, 2 * px)
+  if (m.segments?.length) haloed(() => segmentsPath(ctx, m.segments!), 2.5 * px)
+  const spots = m.spots
+  if (spots.length > MARK_RINGS_MAX) {
+    ctx.fillStyle = MARK
+    const r = 2.5 * px
+    for (const { x, y } of spots) ctx.fillRect(x - r, y - r, 2 * r, 2 * r)
+  } else if (spots.length) {
+    const path = () => { for (const { x, y, size } of spots) { const r = Math.max(MARK_RING * px, size / 2 + 4 * px); ctx.moveTo(x + r, y); ctx.arc(x, y, r, 0, Math.PI * 2) } }
+    haloed(path, 2 * px)
+  }
+  ctx.restore()
 }
 
 // A dashed outline round the picture, with a square handle at each corner for resizing.

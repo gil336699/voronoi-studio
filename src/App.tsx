@@ -13,12 +13,14 @@ import { cutDxf } from './lib/dxfExport'
 import { EXTENSION, parseProject, ProjectError, serializeProject } from './lib/project'
 import { pngProblem, renderPng } from './lib/render'
 import { saveFile } from './lib/saveFile'
-import { DEFAULTS, seedSettings, stretchOf, type Settings } from './lib/settings'
+import type { CheckId } from './lib/preflight'
+import { DEFAULTS, machineOf, seedSettings, stretchOf, type Settings } from './lib/settings'
 import { artworkSvg, laserSvg } from './lib/svgExport'
 import { PICTURE_ACCEPT, PictureError, readPicture } from './lib/pictureFile'
 import { readSvgOutlines, SvgShapeError } from './lib/svgShape'
 import { pixelSize, trimZeros, toUnits, UNIT_LABEL } from './lib/units'
 import { freshDoc, spacingOf, useDesign, type Doc, type Status } from './useDesign'
+import { usePreflight } from './usePreflight'
 import { integrateDensity, densityField } from './voronoi/density'
 import { buildGeometry, patternRegion } from './voronoi/pattern'
 import { randomSeed } from './voronoi/random'
@@ -106,6 +108,16 @@ export function App() {
   const exactSpacing = useCallback(() => spacingOf(s), [s])
   const count = doc.points.length / 2
 
+  // Ready to cut?: the check whose row is pointed at (on the File tab) or pinned is highlighted on the sheet. The report
+  // is only worked out while the File tab is open or a highlight is pinned.
+  const [pointedCheck, setPointedCheck] = useState<CheckId | null>(null)
+  const [pinnedCheck, setPinnedCheck] = useState<CheckId | null>(null)
+  const pinCheck = useCallback((id: CheckId) => setPinnedCheck(pinned => (pinned === id ? null : id)), [])
+  const readiness = usePreflight(tab === 'file' || pinnedCheck !== null, geometry, doc.points, s)
+  const shownCheck = (tab === 'file' ? pointedCheck : null) ?? pinnedCheck
+  const marks = readiness?.checks.find(c => c.id === shownCheck)?.marks ?? null
+  const chooseTab = (next: TabId) => { setTab(next); setPointedCheck(null) }
+
   // Keep a copy of the session: a moment after the last change, at least every 2 s while Auto-relax keeps
   // changing the points, and at once when the page is hidden or closed.
   const latest = useRef({ doc, unsaved: design.unsaved })
@@ -144,7 +156,8 @@ export function App() {
   const newDesign = () => guard(design.unsaved, {
     title: 'Start a new design?', confirm: 'Discard and start new',
     body: 'Unsaved changes in the current design will be lost. Undo can still bring it back during this session.',
-    run: () => { design.replace(freshDoc({ ...DEFAULTS, seed: randomSeed() }), true); setStatus({ text: 'New design.' }) },
+    // The machine values for Ready to cut? stay: they describe the laser and material, not the design.
+    run: () => { design.replace(freshDoc({ ...DEFAULTS, ...machineOf(s), seed: randomSeed() }), true); setStatus({ text: 'New design.' }) },
   })
 
   const openProject = () => guard(design.unsaved, {
@@ -162,7 +175,7 @@ export function App() {
     } catch (error) {
       // The current design stays as it was.
       setOpenError(error instanceof ProjectError ? error.message : `${file.name} could not be read.`)
-      setTab('file')
+      chooseTab('file')
     }
   }
 
@@ -183,7 +196,7 @@ export function App() {
       const veinLines = outlines.lines.length ? veinsFromLines(outlines.lines, file.name, boxOf(outlines.rings)) : null
       design.change({ shape: 'custom', customShape: shape, width: shape.width, height: shape.height, ...(veinLines ? { veinLines, veins: 'imported' as const } : {}) }, 'customShape')
       if (edited) design.generate() // already confirmed: start fresh in the new shape
-      setTab('sheet')
+      chooseTab('sheet')
       const veined = veinLines ? ` Its ${veinLines.lines.length} open ${veinLines.lines.length === 1 ? 'line is a vein' : 'lines are veins'}, on the Pattern tab.` : ''
       const using = outlines.fromClip ? `${file.name} is a picture, so the outline of its clipping mask is the sheet.` : `Using ${file.name} as the sheet.`
       setStatus({ text: `${using}${veined}`, warning: outlines.fromClip })
@@ -204,7 +217,7 @@ export function App() {
       const veinLines = veinsFromLines(found.lines, file.name, box)
       if (!veinLines) throw new SvgShapeError(`${file.name} has no open lines to use as veins.`)
       design.change({ veins: 'imported', veinLines }, 'veinLines')
-      setTab('pattern')
+      chooseTab('pattern')
       setStatus({ text: `Veins: ${veinLines.lines.length} ${veinLines.lines.length === 1 ? 'line' : 'lines'} from ${file.name}` })
     } catch (error) {
       setStatus({ text: error instanceof SvgShapeError ? error.message : `${file.name} could not be read for veins.`, warning: true })
@@ -222,7 +235,7 @@ export function App() {
     try {
       const densityPicture = await readPicture(file)
       design.change({ density: 'picture', densityPicture, showPicture: true }, 'densityPicture')
-      setTab('pattern')
+      chooseTab('pattern')
       // The name goes last: a long one is cut off at the end of the status line.
       setStatus({ text: `Density picture: ${file.name}` })
     } catch (error) {
@@ -305,7 +318,7 @@ export function App() {
       const key = event.key.toLowerCase()
       if (event.key === 'Escape') {
         if (typing && !pending && !showHelp && target instanceof HTMLElement) { target.blur(); return }
-        setShowHelp(false); setPending(null); if (!typing) setTool('move'); return
+        setShowHelp(false); setPending(null); if (!typing) { setTool('move'); setPinnedCheck(null) } return
       }
       if (pending || showHelp) return
       if (mod && key === 's') { event.preventDefault(); void saveProject(); return }
@@ -347,7 +360,7 @@ export function App() {
   return <main className="studio">
     <TooltipLayer />
     <div className="stage">
-      <Stage geometry={geometry} points={doc.points} settings={s} tool={activeTool} frameRef={frameRef} controlRef={stageRef}
+      <Stage geometry={geometry} points={doc.points} settings={s} tool={activeTool} marks={marks} frameRef={frameRef} controlRef={stageRef}
         onBeginEdit={() => { design.beginEdit(); setStatus(null) }} onPoints={design.editPoints} onRelease={design.releasePoint} onZoom={setZoom}
         onNotice={text => setStatus({ text })} onPicture={movePicture} />
     </div>
@@ -358,7 +371,7 @@ export function App() {
     </header>
 
     <aside className="sidebar side-panel glass" aria-label="Design controls">
-      <Tabs label="Design controls" idBase="design" value={tab} onChange={setTab} tabs={[
+      <Tabs label="Design controls" idBase="design" value={tab} onChange={chooseTab} tabs={[
         { id: 'pattern', label: 'Pattern', title: 'How many cells, where the points go, gradients and relaxation.', badge: doc.stale ? 'settings not applied' : undefined },
         { id: 'sheet', label: 'Sheet', title: 'Sheet size, shape, units and border.' },
         { id: 'style', label: 'Style', title: 'Lines or holes, web width, corner radius and colours.' },
@@ -372,6 +385,7 @@ export function App() {
       <TabPanel idBase="design" id="style" value={tab}><StylePanel s={s} change={design.change} holes={geometry.metrics.holes} dropped={geometry.metrics.dropped} /></TabPanel>
       <TabPanel idBase="design" id="file" value={tab}>
         <FilePanel s={s} change={design.change} unsaved={design.unsaved} busy={design.busy} openError={openError} holes={cellStyle === 'holes' ? geometry.holes.length : null}
+          report={readiness} pinned={pinnedCheck} onPoint={setPointedCheck} onPin={pinCheck}
           onNew={newDesign} onOpen={openProject} onSave={() => void saveProject()} onExport={kind => void exportFile(kind)} />
       </TabPanel>
       <input ref={fileInput} type="file" accept=".json,application/json" hidden aria-label="Choose a project file" onChange={event => {

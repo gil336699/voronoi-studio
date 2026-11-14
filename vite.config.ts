@@ -19,13 +19,21 @@ function chunkSizes(): Plugin {
   }
 }
 
+// React and the geometry libraries get chunks of their own, so the app's own code stays under the limit as it grows
+// (1.12.2's single chunk was 506 kB). The picture decoders aren't listed: they stay separate and load only when needed.
+const VENDOR: [RegExp, string][] = [
+  [/[\\/]node_modules[\\/](react|react-dom|scheduler)[\\/]/, 'react'],
+  [/[\\/]node_modules[\\/](clipper2-ts|d3-delaunay|delaunator|robust-predicates)[\\/]/, 'geometry'],
+]
+const vendorChunk = (id: string) => VENDOR.find(([test]) => test.test(id))?.[1]
+
 export default defineConfig({
   // Relative asset paths, so the built site works from any address: a GitHub Pages
   // subfolder such as /voronoi-studio/, another host, or a custom domain.
   base: './',
   plugins: [react(), chunkSizes()],
   worker: { format: 'es' },
-  build: { chunkSizeWarningLimit: 3400 }, // see chunkSizes()
+  build: { chunkSizeWarningLimit: 3400, rollupOptions: { output: { manualChunks: vendorChunk } } }, // see chunkSizes()
   test: {
     environment: 'node',
     exclude: ['node_modules/**', 'dist/**', 'local/**'],

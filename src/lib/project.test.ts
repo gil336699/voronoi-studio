@@ -34,6 +34,16 @@ describe('project files', () => {
     expect(() => parseProject('{"schema":"voronoi-studio/project","version":1,"points":[1,2,3]}')).toThrow(/damaged/)
   })
 
+  it('keeps the machine values for Ready to cut?, and gives files from before them the defaults', () => {
+    const settings = { ...DEFAULTS, kerf: 0.2, smallestWeb: 1.6, smallestFeature: 0.8 }
+    const back = parseProject(serializeProject({ settings, points: Float64Array.from([10, 20, 30, 40]), handEdited: false }))
+    expect([back.settings.kerf, back.settings.smallestWeb, back.settings.smallestFeature]).toEqual([0.2, 1.6, 0.8])
+    const old = parseProject(readFileSync(new URL('../../test-fixtures/minimal-v1.voronoi.json', import.meta.url), 'utf8'))
+    expect([old.settings.kerf, old.settings.smallestWeb, old.settings.smallestFeature]).toEqual([0.15, 1, 0.5])
+    const odd = sanitizeSettings({ kerf: 9, smallestWeb: -1, smallestFeature: 'small' })
+    expect([odd.kerf, odd.smallestWeb, odd.smallestFeature]).toEqual([5, 0, 0.5])
+  })
+
   it('clamps out-of-range and wrongly typed settings', () => {
     const s = sanitizeSettings({ width: 1e9, count: -4, units: 'furlongs', lineColor: 'red', showSites: 'yes', cellStyle: 'holes' })
     expect(s.width).toBe(5000)

@@ -115,14 +115,15 @@ export function DraftNumber({ value, min, max, step = 1, digits = 0, onChange, o
     onKeyDown={event => { if (event.key === 'Enter') commit() }} />
 }
 
-export function NumberField({ label, value, min, max, step = 1, digits = 0, suffix, onChange, tip, unavailable, compact }: Tip & {
+// inline: the label and the box on one row, for short lists of values such as the machine's.
+export function NumberField({ label, value, min, max, step = 1, digits = 0, suffix, onChange, tip, unavailable, compact, inline }: Tip & {
   label: string; value: number; min: number; max: number; step?: number; digits?: number; suffix?: string
-  onChange: (value: number) => void; compact?: boolean
+  onChange: (value: number) => void; compact?: boolean; inline?: boolean
 }) {
   // A typed value outside the range is set to the nearest end, and the field says so for a few seconds.
   const [note, setNote] = useNote()
   const shown = (v: number) => `${trimZeros(v.toFixed(digits))}${suffix ? ` ${suffix}` : ''}`
-  return <label className={compact ? 'field compact-field' : 'field'} data-tip={unavailable || tip}>
+  return <label className={inline ? 'field inline-field' : compact ? 'field compact-field' : 'field'} data-tip={unavailable || tip}>
     <span className="field-label"><span>{label}</span></span>
     <span className="number-wrap">
       <DraftNumber value={value} min={min} max={max} step={step} digits={digits} onChange={onChange} disabled={Boolean(unavailable)}
@@ -134,11 +135,11 @@ export function NumberField({ label, value, min, max, step = 1, digits = 0, suff
 }
 
 // A length in the sheet's unit, stored in millimetres.
-export function LengthField({ label, mm, min, max, units, dpi, onChange, tip, unavailable, small, compact }: Tip & {
-  label: string; mm: number; min: number; max: number; units: Units; dpi: number; onChange: (mm: number) => void; small?: boolean; compact?: boolean
+export function LengthField({ label, mm, min, max, units, dpi, onChange, tip, unavailable, small, compact, inline }: Tip & {
+  label: string; mm: number; min: number; max: number; units: Units; dpi: number; onChange: (mm: number) => void; small?: boolean; compact?: boolean; inline?: boolean
 }) {
   return <NumberField label={label} value={toUnits(mm, units, dpi)} min={toUnits(min, units, dpi)} max={toUnits(max, units, dpi)}
-    step={stepFor(units, small)} digits={decimals(units, small) + 1} suffix={UNIT_LABEL[units]} tip={tip} unavailable={unavailable} compact={compact}
+    step={stepFor(units, small)} digits={decimals(units, small) + 1} suffix={UNIT_LABEL[units]} tip={tip} unavailable={unavailable} compact={compact} inline={inline}
     onChange={value => onChange(fromUnits(value, units, dpi))} />
 }
 

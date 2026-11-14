@@ -1,5 +1,17 @@
 # Voronoi Studio Changelog
 
+## 1.13.0 2026-11-14
+
+- **Ready to cut?** A new section on the File tab, above Laser SVG and DXF, checks the design against your machine before you cut: your laser's **Kerf** (0.15 mm to start) and your material's **Smallest web** (1 mm) and **Smallest feature** (0.5 mm). They're saved with the project, shown in the sheet's unit, and kept when you press New. Before, the only check was for Holes with no hole left at all.
+- **In Holes style** it counts cells left solid, webs the laser burns away (no wider than the kerf), webs under the smallest web, and holes under the smallest feature. Webs are measured between the hole outlines themselves, so rounded corners, walls that follow cell size, veins and imported outlines all count exactly, and so does the frame along the sheet outline when the outline is cut.
+- **In Lines style,** where every cell is cut out as a piece, it counts cuts shorter than the smallest feature, and cells, a border and veins narrower than the smallest web.
+- **In both,** it lists hole outlines that cross themselves or are too small to write, if there are any, and notes when sites or Delaunay lines are in the cut files, so you can set their layers to score or off.
+- **See where each problem is.** Point at a row and its problems light up in orange on the sheet, each with a ring round it, so even a 0.1 mm web shows at full view. Click the row to keep them shown while you change settings on other tabs, and press Esc to clear it. Each row's tooltip says why it would fail and what to change.
+- **It only warns.** Every export stays available, except that Laser SVG and DXF are still off when Holes leaves no hole, as in 1.12.1.
+- On 7 real designs (Holes with thick, thin and walls-follow webs, Leaf loops in both styles, an imported pill with a hole, and an imported outline) every count matched measuring each pair of outlines one by one, 27 of 27. Checking takes about 2 ms at 300 cells, 11 ms at 2,000 and 50 ms at 10,000 holes. While Auto-relax runs it's redone at most every 250 ms, or every eight times its own time, so Auto-relax with the File tab open ran 3 % slower at 2,000 cells and 9 % slower at 10,000 (best of three runs).
+- Projects stay version 6. Older versions of the app open 1.13 projects as the same design and leave out the three machine values; older projects open with the defaults.
+- The app now loads as three files, the app, React and the geometry libraries, instead of one, so the build no longer warns about a 506 kB file. Nothing else changes: the cut and artwork files are the same as 1.12.2's for every design checked.
+
 ## 1.12.2 2026-11-14
 
 - **The README shows every variation side by side.** The Features section opens with a table of 31 patterns in six families, each the same round 200 mm panel made in the app with one setting changed. Its vector PDF and full-size PNG are on this release.

@@ -21,7 +21,7 @@ export type CutPaths = {
 
 // Edges between points that lie almost on one circle, or clipped right at an imported outline, can be a few
 // microns long or less. As cuts they'd only make a laser fire a dot, so cut files leave out anything under 5 µm.
-const MIN_CUT = 0.005
+export const MIN_CUT = 0.005
 const cuttable = (segments: Segment[]) => segments.filter(([x0, y0, x1, y1]) => Math.hypot(x1 - x0, y1 - y0) >= MIN_CUT)
 
 // Hole outlines lose pieces under 10 µm, a tenth of a laser's kerf. Holes clipped along a curved vein can have

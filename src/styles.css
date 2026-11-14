@@ -241,6 +241,27 @@ details > summary::after {
 details[open] > summary::after { transform: rotate(45deg); }
 
 .notice { margin-bottom: 16px; padding: 12px; border-radius: var(--r-group); background: color-mix(in srgb, var(--orange) 16%, transparent); font-size: 12px; line-height: 1.4; }
+
+/* A label and its box on one row, for short lists of values such as the machine's. */
+.field.inline-field { grid-template-columns: minmax(0, 1fr) 112px; align-items: center; column-gap: 10px; row-gap: 4px; margin-top: 8px; }
+.tab-panel section > h2 + .field.inline-field { margin-top: 8px; }
+.inline-field .field-note { grid-column: 1 / -1; }
+
+/* Ready to cut?: the summary, then a row per thing to check, each showing where it is on the sheet. */
+.preflight-summary { margin-top: 12px; }
+.preflight-summary.problems { color: var(--label); font-weight: 600; }
+.preflight-list { display: grid; gap: 6px; margin: 8px 0 0; padding: 0; list-style: none; }
+.preflight-row {
+  width: 100%; min-height: 40px; padding: 7px 12px; justify-content: flex-start; align-items: flex-start; gap: 9px;
+  border-radius: var(--r-group); text-align: left; font-weight: 500;
+}
+.preflight-row[aria-pressed='true'] { background: color-mix(in srgb, var(--orange) 20%, transparent); box-shadow: inset 0 0 0 1.5px var(--orange); }
+.preflight-row[aria-pressed='true']:hover { background: color-mix(in srgb, var(--orange) 28%, transparent); }
+.preflight-dot { flex: none; width: 8px; height: 8px; margin-top: 4px; border-radius: 50%; background: var(--orange); }
+.preflight-row[data-note='true'] .preflight-dot { background: var(--label-3); }
+.preflight-text { display: grid; gap: 1px; min-width: 0; }
+.preflight-label { color: var(--label); font-size: 12.5px; font-weight: 600; line-height: 1.3; }
+.preflight-detail { color: var(--label-2); font-size: 11.5px; line-height: 1.3; }
 .save-state { display: flex; align-items: center; gap: 6px; margin: 0; }
 .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--tint); }
 
@@ -406,6 +427,6 @@ kbd { display: inline-block; padding: 1px 7px; border-radius: 6px; background: v
   input[type='range']::-moz-range-thumb { border: 2px solid Canvas; background: ButtonText; box-shadow: none; }
   input[type='range']:disabled { opacity: 1; }
   input[type='range']:disabled::-webkit-slider-runnable-track, input[type='range']:disabled::-webkit-slider-thumb { background: GrayText; }
-  .tab-badge, .dot { forced-color-adjust: none; background: Highlight; }
+  .tab-badge, .dot, .preflight-dot { forced-color-adjust: none; background: Highlight; }
   [aria-selected='true'] .tab-badge { background: HighlightText; }
 }

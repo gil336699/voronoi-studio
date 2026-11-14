@@ -9,7 +9,9 @@ import { area, convexHull, insetConvex, isConvex, minWidth, normalize, perimeter
 import { boxOf, difference, groupRings, offset } from './shape'
 
 export type Outline = { points: Vec[]; bulges: number[] }
-export type Hole = { cell: number; outline: Outline; width: number; area: number; length: number }
+// core, radius: a convex hole is its core polygon grown by the radius, which lets Ready to cut? measure webs exactly.
+// Holes made by Clipper's offsets (concave or clipped cells) have neither.
+export type Hole = { cell: number; outline: Outline; width: number; area: number; length: number; core?: Polygon; radius?: number }
 export type HoleSettings = { web: number; radius: number; minHole: number }
 
 // The largest inset between lo and hi that still leaves a shape, found by halving the range.
@@ -49,6 +51,7 @@ export function makeHole(cell: Polygon, index: number, settings: HoleSettings): 
     // Steiner's formula: growing a convex shape by r adds perimeter·r + πr² of area and 2πr of length.
     area: area(core) + perimeter(core) * radius + Math.PI * radius * radius,
     length: perimeter(core) + 2 * Math.PI * radius,
+    core, radius,
   }
 }
 
