@@ -1,5 +1,11 @@
 # Voronoi Studio Changelog
 
+## 1.13.1 2026-11-14
+
+- **Leaf veins follow Vein ends all the way to 60.** With **Join into loops** off, Leaf veins now have exactly as many ends as **Vein ends** says, and turning it up adds veins a few at a time. Before, the count moved in jumps. On a tall leaf-shaped sheet (363.8 × 630.1 mm, started from the bottom), 25 to 34 all gave 34 ends, and every setting from 35 up gave over 500, a mesh of tiny twigs that cut the pattern into 688 regions. Now 60 ends cut it into 46.
+- **Veins no longer cross.** A vein's last stretch to the edge used to steer straight for the nearest point of the edge, so it could cut across its neighbours: 3 crossings at 20 ends on that leaf, and more at higher counts. Now it ends on the first vein in its way, as veins join in a real leaf. Across five sheets and every count from 2 to 60, open or with loops, no vein crosses another.
+- Designs saved with open Leaf veins get the new veins where the old ones had more ends than asked for, or crossed. The rest are unchanged: of 295 open Leaf setups tested (five sheets, 2 to 60 ends), the 87 whose count was already right and had no crossings are identical. With loops, 205 of 295 are identical, including every count up to 22 and the default design.
+
 ## 1.13.0 2026-11-14
 
 - **Ready to cut?** A new section on the File tab, above Laser SVG and DXF, checks the design against your machine before you cut: your laser's **Kerf** (0.15 mm to start) and your material's **Smallest web** (1 mm) and **Smallest feature** (0.5 mm). They're saved with the project, shown in the sheet's unit, and kept when you press New. Before, the only check was for Holes with no hole left at all.

@@ -313,5 +313,54 @@ describe('leaf veins with loops', () => {
   })
 })
 
+describe('leaf vein ends', () => {
+  // A tall leaf like Gil's 363.8 × 630.3 mm vesica (two circles, each through the other's centre), started from the
+  // bottom, and a wide strip started from the left. Before 1.13.1 both went from about 35 ends straight to about
+  // 500, a mesh of twigs: every branch feeding more tips than a threshold went in at once, and once the threshold
+  // came down to the twigs, hundreds of them did.
+  const r = 363.8, lens: Polygon = []
+  for (let i = 0; i <= 200; i++) { const t = -Math.PI / 3 + (i / 200) * (2 * Math.PI / 3); lens.push([r * Math.cos(t) - r / 2, r * Math.sin(t)]) }
+  for (let i = 0; i <= 200; i++) { const t = (2 * Math.PI) / 3 + (i / 200) * (2 * Math.PI / 3); lens.push([r / 2 + r * Math.cos(t), -r * Math.sin(t)]) }
+  const leaf: PatternSettings = { ...base, shape: 'custom', customShape: shapeFromOutlines([lens], 'vesica'), width: 363.8, height: 630.3, border: 5,
+    veins: 'leaf', veinLoops: false, veinStart: 'bottom', veinWidth: 1, veinTaper: 0 }
+  const strip: PatternSettings = { ...base, width: 300, height: 120, border: 5, veins: 'leaf', veinLoops: false, veinStart: 'left', veinWidth: 1.5, veinTaper: 60 }
+  const key = (p: Vec) => `${p[0].toFixed(6)},${p[1].toFixed(6)}`
+  // Ends: vein ends that no other vein starts from, other than the start itself.
+  const endsOf = (s: PatternSettings) => {
+    const sheet = patternRegion({ ...s, veins: 'none' }), veins = makeVeins(sheet, vs(s))
+    const starts = new Set(veins.map(v => key(v.points[0]))), start = key(veinBase(sheet, s.veinStart!))
+    return veins.filter(v => { const end = key(v.points[v.points.length - 1]); return !starts.has(end) && end !== start }).length
+  }
+
+  it('has exactly as many ends as Vein ends asks, all the way up the slider', () => {
+    for (const s of [leaf, strip]) for (const count of [10, 24, 30, 36, 45, 60]) expect(endsOf({ ...s, veinCount: count })).toBe(count)
+  })
+
+  // Before 1.13.1 a vein's last stretch steered for the nearest edge point straight across its neighbours: 3 crossings
+  // at 20 ends on the tall leaf, and still about 30 at 60 once the count was exact.
+  it('never crosses one vein with another, however many ends', () => {
+    for (const s of [leaf, strip]) for (const count of [20, 40, 60]) {
+      const veins = makeVeins(patternRegion({ ...s, veins: 'none' }), vs({ ...s, veinCount: count }))
+      const boxes = veins.map(v => [Math.min(...v.points.map(p => p[0])), Math.min(...v.points.map(p => p[1])), Math.max(...v.points.map(p => p[0])), Math.max(...v.points.map(p => p[1]))])
+      let crossings = 0
+      for (let i = 0; i < veins.length; i++) for (let j = i + 1; j < veins.length; j++) {
+        const [a, b] = [boxes[i], boxes[j]]
+        if (a[0] > b[2] || b[0] > a[2] || a[1] > b[3] || b[1] > a[3]) continue
+        const P = veins[i].points, Q = veins[j].points
+        for (let k = 1; k < P.length; k++) for (let m = 1; m < Q.length; m++) if (crosses([P[k - 1], P[k]], [Q[m - 1], Q[m]])) crossings++
+      }
+      expect(crossings).toBe(0)
+    }
+  })
+
+  it('splits the leaf into about one region per end at 60, not hundreds', () => {
+    for (const s of [leaf, strip]) {
+      const parts = patternRegion({ ...s, veinCount: 60 }).parts!.length
+      expect(parts).toBeGreaterThan(30)
+      expect(parts).toBeLessThan(90)
+    }
+  })
+})
+
 // Polygon is used in the type of a helper above.
 export type { Polygon }

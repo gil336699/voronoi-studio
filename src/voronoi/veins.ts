@@ -194,15 +194,16 @@ function wingVeins(region: Region, base: Vec, count: number, centre: boolean): {
 
 // ---------- leaf: space colonization ----------
 
-// Segments in a grid, for nearest-segment queries against the region's outline.
+// Segments in a grid, for nearest-segment queries against the region's outline, and crossings with the veins so far.
+// Each segment can carry an owner, such as the vein point it ends at.
 class SegmentGrid {
   private map = new Map<number, number[]>()
   private segs: number[][] = []
   constructor(private cell: number) {}
   private key(i: number, j: number) { return (i + 30000) * 60001 + (j + 30000) }
-  add(ax: number, ay: number, bx: number, by: number) {
+  add(ax: number, ay: number, bx: number, by: number, owner = -1) {
     const id = this.segs.length, c = this.cell
-    this.segs.push([ax, ay, bx, by])
+    this.segs.push([ax, ay, bx, by, owner])
     for (let i = Math.floor(Math.min(ax, bx) / c); i <= Math.floor(Math.max(ax, bx) / c); i++)
       for (let j = Math.floor(Math.min(ay, by) / c); j <= Math.floor(Math.max(ay, by) / c); j++) {
         const k = this.key(i, j), list = this.map.get(k)
@@ -220,6 +221,21 @@ class SegmentGrid {
           const t = L2 > 0 ? Math.max(0, Math.min(1, ((x - ax) * ex + (y - ay) * ey) / L2)) : 0
           const px = ax + ex * t, py = ay + ey * t, d = Math.hypot(x - px, y - py)
           if (d <= r && (!best || d < best.d)) best = { d, x: px, y: py }
+        }
+    return best
+  }
+  // Where the segment from a to b first crosses one here away from their ends, and that one's owner.
+  firstCrossing(a: Vec, b: Vec): { at: Vec; owner: number } | null {
+    let best: { at: Vec; owner: number } | null = null, first = Infinity
+    const c = this.cell, ex = b[0] - a[0], ey = b[1] - a[1]
+    for (let i = Math.floor(Math.min(a[0], b[0]) / c); i <= Math.floor(Math.max(a[0], b[0]) / c); i++)
+      for (let j = Math.floor(Math.min(a[1], b[1]) / c); j <= Math.floor(Math.max(a[1], b[1]) / c); j++)
+        for (const id of this.map.get(this.key(i, j)) ?? []) {
+          const [px, py, qx, qy, owner] = this.segs[id]
+          if (!crossing(a, b, [px, py], [qx, qy])) continue
+          // How far along a–b the crossing is.
+          const fx = qx - px, fy = qy - py, t = ((px - a[0]) * fy - (py - a[1]) * fx) / (ex * fy - ey * fx)
+          if (t < first) { first = t; best = { at: [a[0] + ex * t, a[1] + ey * t], owner } }
         }
     return best
   }
@@ -298,30 +314,50 @@ function growTree(region: Region, base: Vec): Tree {
   return tree
 }
 
-// The tree's main veins: the branches that feed the most tips, about `ends` of them. Each carries on along its own
-// heaviest branch to where growth stopped, then curves the last little way to the edge, so its regions close. Widths follow Webb's canalization: each point is
-// as thick as its longest run to a tip, so veins taper all along their length. Returns the veins between branch points,
-// each point with its run to a tip (mm), and the longest run.
+// The tree's main veins: the branches that feed the most tips, `ends` of them (fewer only if the tree has fewer tips).
+// Each carries on along its own heaviest branch to where growth stopped, then curves the last little way to the edge,
+// so its regions close, or to the first vein in its way, which it joins. Widths follow Webb's canalization: each point
+// is as thick as its longest run to a tip, so veins taper all along their length. Returns the veins between branch
+// points, each point with its run to a tip (mm), the longest run, and which veins end on which (see joinEnds).
 type Line = { points: Vec[]; run: number[] }
-function mainVeins(region: Region, tree: Tree, ends: number): { lines: Line[]; longest: number } {
+type Join = { line: number; onto: number }
+function mainVeins(region: Region, tree: Tree, ends: number): { lines: Line[]; longest: number; joins: Join[] } {
   const { x, y, parent, children, tips, D, spacing } = tree
   const n = x.length
-  const endsAt = (limit: number) => { let e = 0; for (let i = 0; i < n; i++) if (tips[i] >= limit && !children[i].some(c => tips[c] >= limit)) e++; return e }
-  let lo = 1, hi = Math.max(1, tips[0])
-  while (lo < hi) { const mid = Math.floor((lo + hi + 1) / 2); if (endsAt(mid) >= ends) lo = mid; else hi = mid - 1 }
-  const kept = new Uint8Array(n)
-  for (let i = 0; i < n; i++) if (tips[i] >= lo) kept[i] = 1
+  // Branches go in one at a time, the one feeding the most tips first (the longer of two that feed as many), each
+  // with its heaviest branch on to where growth stopped, until there are `ends` of them. Before 1.13.1 every branch
+  // feeding at least some number of tips went in together, so the count moved in jumps: once that number came down to
+  // the twigs that feed two tips, as it did from about 35 ends on a tall leaf, some 500 of them went in at once, a
+  // mesh of twigs.
+  // How far each point reaches: its longest way to a tip. The start's is the longest of all.
+  const reach = new Float64Array(n)
+  for (let i = n - 1; i > 0; i--) reach[parent[i]] = Math.max(reach[parent[i]], reach[i] + Math.hypot(x[i] - x[parent[i]], y[i] - y[parent[i]]))
+  const longer = reach[0] + 1
+  const waiting = new MinHeap() // branches off the veins so far, heaviest first
+  const kept = new Uint8Array(n), leaves: number[] = []
+  const follow = (from: number) => {
+    for (let i = from; ; ) {
+      kept[i] = 1
+      if (!children[i].length) { leaves.push(i); return }
+      const heaviest = children[i].reduce((b, k) => (tips[k] > tips[b] ? k : b))
+      for (const c of children[i]) if (c !== heaviest) waiting.push(c, -(tips[c] + reach[c] / longer))
+      i = heaviest
+    }
+  }
+  follow(0)
+  while (leaves.length < ends && waiting.size) follow(waiting.pop()[0])
   const size = Math.max(regionWidth(region), regionHeight(region))
   const edges = new SegmentGrid(size / 40)
   for (const ring of regionRings(region)) for (let i = 0; i < ring.length; i++) { const p = ring[i], q = ring[(i + 1) % ring.length]; edges.add(p[0], p[1], q[0], q[1]) }
   const dir = (a: number, b: number): Vec => { const ux = x[b] - x[a], uy = y[b] - y[a], L = Math.hypot(ux, uy) || 1; return [ux / L, uy / L] }
-  const tails = new Map<number, Vec[]>()
-  for (let e = 0; e < n; e++) {
-    if (!kept[e] || children[e].some(c => tips[c] >= lo)) continue
-    // Carry on along the heaviest branch to where growth stopped, as the real vein does.
-    let last = e
-    while (children[last].length) { last = children[last].reduce((b, k) => (tips[k] > tips[b] ? k : b)); kept[last] = 1 }
-    // Then curve the last little way to the edge: steer from the vein's heading toward the nearest edge point.
+  // The veins so far, each piece owned by the vein point it ends at, so a vein's last stretch to the edge never crosses
+  // one: it stops where it meets the first and joins it, as veins do. Before 1.13.1 it cut straight across.
+  const drawn = new SegmentGrid(size / 40)
+  for (let i = 1; i < n; i++) if (kept[i]) drawn.add(x[parent[i]], y[parent[i]], x[i], y[i], i)
+  const below = (a: number, b: number) => { for (let p = b; p >= 0; p = parent[p]) if (p === a) return true; return false }
+  const tails = new Map<number, Vec[]>(), meets = new Map<number, number>()
+  for (const last of leaves) {
+    // Curve the last little way to the edge: steer from the vein's heading toward the nearest edge point.
     let back = last
     for (let k = 0; k < 6 && parent[back] >= 0; k++) back = parent[back]
     let h = dir(back, last), px = x[last], py = y[last]
@@ -337,7 +373,19 @@ function mainVeins(region: Region, tree: Tree, ends: number): { lines: Line[]; l
         let a = 0, b = D
         for (let s = 0; s < 20; s++) { const m = (a + b) / 2; if (contains(region, px + h[0] * m, py + h[1] * m)) a = m; else b = m }
         tail.push([px + h[0] * (b + D * 0.05), py + h[1] * (b + D * 0.05)])
-        tails.set(last, tail)
+        // Up to the first vein in the way, if any. One it branched from it leaves alone: joining that would close a
+        // bulb beside a single vein.
+        const path: Vec[] = [[x[last], y[last]], ...tail]
+        for (let i = 1; i < path.length; i++) {
+          const hit = drawn.firstCrossing(path[i - 1], path[i])
+          if (!hit) continue
+          if (below(hit.owner, last)) { path.length = 0; break }
+          path[i] = hit.at; path.length = i + 1; meets.set(last, hit.owner)
+          break
+        }
+        if (!path.length) break
+        tails.set(last, path.slice(1))
+        for (let i = 1; i < path.length; i++) drawn.add(path[i - 1][0], path[i - 1][1], path[i][0], path[i][1], last)
         break
       }
       px = qx; py = qy; tail.push([px, py])
@@ -354,12 +402,13 @@ function mainVeins(region: Region, tree: Tree, ends: number): { lines: Line[]; l
     run[i] = r
   }
   const lines: Line[] = []
+  const lineOf = new Int32Array(n).fill(-1) // the line each kept point after the start is on
   const walk = (start: number) => {
     for (const first of children[start].filter(c => kept[c])) {
-      const points: Vec[] = [[x[start], y[start]]], r: number[] = [run[start]]
+      const points: Vec[] = [[x[start], y[start]]], r: number[] = [run[start]], on: number[] = []
       let c = first
       for (;;) {
-        points.push([x[c], y[c]]); r.push(run[c])
+        points.push([x[c], y[c]]); r.push(run[c]); on.push(c)
         const next = children[c].filter(k => kept[k])
         if (next.length !== 1) {
           if (next.length > 1) walk(c)
@@ -372,10 +421,64 @@ function mainVeins(region: Region, tree: Tree, ends: number): { lines: Line[]; l
         c = next[0]
       }
       lines.push({ points, run: r })
+      for (const p of on) lineOf[p] = lines.length - 1
     }
   }
   walk(0)
-  return { lines, longest: Math.max(1e-9, run[0]) }
+  const joins = [...meets].map(([last, owner]) => ({ line: lineOf[last], onto: lineOf[owner] })).filter(j => j.line >= 0 && j.onto >= 0 && j.line !== j.onto)
+  return { lines, longest: Math.max(1e-9, run[0]), joins }
+}
+
+// Main veins that end on another vein, put exactly on it once both are smoothed, and kept there (returned as distances
+// along the vein joined, for insertAlong). Smoothing both can leave the end a hair short of the other vein, or past
+// it, even crossing it and coming back: within `reach` of its end, a vein stops where it last crosses the one it
+// joins, and an end that falls short moves onto that vein's nearest point.
+function joinEnds(lines: Line[], joins: Join[], reach: number): number[][] {
+  // A vein's own end settles before others join it, so the points they keep on it stay on it.
+  const order: Join[] = [], pending = new Set(joins.map(j => j.line))
+  for (let left = joins; left.length; ) {
+    const ready = left.filter(j => !pending.has(j.onto))
+    const next = ready.length ? ready : left.slice(0, 1) // veins joining each other round a loop: take one as it comes
+    for (const j of next) { order.push(j); pending.delete(j.line) }
+    left = left.filter(j => !next.includes(j))
+  }
+  const at: number[][] = lines.map(() => [])
+  for (const { line, onto } of order) {
+    const { points: pts, run } = lines[line], other = lines[onto].points
+    const along = [0]
+    for (let i = 1; i < other.length; i++) along.push(along[i - 1] + Math.hypot(other[i][0] - other[i - 1][0], other[i][1] - other[i - 1][1]))
+    let back = 0, done = false
+    for (let k = pts.length - 1; k >= 1 && back <= reach && !done; k--) {
+      const [p, q] = [pts[k - 1], pts[k]], ex = q[0] - p[0], ey = q[1] - p[1]
+      // The crossing nearest this piece's far end.
+      let best = -1, spot: Vec = q, s = 0
+      for (let i = 1; i < other.length; i++) {
+        const [a, b] = [other[i - 1], other[i]]
+        if (!crossing(p, q, a, b)) continue
+        const fx = b[0] - a[0], fy = b[1] - a[1], t = ((a[0] - p[0]) * fy - (a[1] - p[1]) * fx) / (ex * fy - ey * fx)
+        if (t > best) { best = t; spot = [p[0] + ex * t, p[1] + ey * t]; s = along[i - 1] + Math.hypot(spot[0] - a[0], spot[1] - a[1]) }
+      }
+      if (best >= 0) {
+        const r = run[k - 1] + (run[k] - run[k - 1]) * best
+        pts.length = k; run.length = k; pts.push(spot); run.push(r)
+        at[onto].push(s)
+        done = true
+      }
+      back += Math.hypot(ex, ey)
+    }
+    if (done) continue
+    const end = pts[pts.length - 1]
+    let near = Infinity, spot: Vec = end, s = 0
+    for (let i = 1; i < other.length; i++) {
+      const a = other[i - 1], b = other[i], ex = b[0] - a[0], ey = b[1] - a[1], L2 = ex * ex + ey * ey
+      const t = L2 > 0 ? Math.max(0, Math.min(1, ((end[0] - a[0]) * ex + (end[1] - a[1]) * ey) / L2)) : 0
+      const q: Vec = [a[0] + ex * t, a[1] + ey * t], d = Math.hypot(q[0] - end[0], q[1] - end[1])
+      if (d < near) { near = d; spot = q; s = along[i - 1] + Math.sqrt(L2) * t }
+    }
+    pts[pts.length - 1] = spot
+    at[onto].push(s)
+  }
+  return at
 }
 
 // ---------- leaf with loops: closed venation between the main veins ----------
@@ -609,7 +712,7 @@ const length = (p: Vec[]) => p.reduce((s, q, i) => (i ? s + Math.hypot(q[0] - p[
 
 // ---------- imported: widths along the veins ----------
 
-// A binary min-heap of indices keyed by distance, for the shortest paths below.
+// A binary min-heap of indices by key: distances for the shortest paths below, and branch weights for Leaf veins above.
 class MinHeap {
   private items: number[] = []
   private keys: number[] = []
@@ -728,15 +831,14 @@ export function makeVeins(region: Region, v: VeinSettings): Vein[] {
     // Main veins, smoothed and tapering along their length; with loops (fewer main veins: a third of the loops, plus
     // two), thinner veins grown between the smoothed main veins, each join a point kept in the main vein it meets.
     const tree = growTree(region, base)
-    const { lines, longest } = mainVeins(region, tree, v.loops ? Math.min(14, Math.max(3, Math.round(count / 3) + 2)) : count)
+    const { lines, longest, joins } = mainVeins(region, tree, v.loops ? Math.min(14, Math.max(3, Math.round(count / 3) + 2)) : count)
     const smoothed: Line[] = lines.map(l => { const pts = relaxLine(l.points); return { points: pts, run: resampleOnto(l.points, l.run, pts) } })
+    const joinAt = joinEnds(smoothed, joins, 2 * tree.D)
     const width = (r: number) => v.width * ((1 - taper) + taper * (r / longest))
-    if (!v.loops) return smoothed.map(l => simplify(l.points, l.run.map(width), tol))
+    const finish = (l: Line, at: number[]) => { const { points, values, fixed } = insertAlong(l.points, l.run, at); return simplify(points, values.map(width), tol, fixed) }
+    if (!v.loops) return smoothed.map((l, i) => finish(l, joinAt[i]))
     const { chains, attach } = loopVeins(region, smoothed, count, tree.D)
-    const veins = smoothed.map((l, i) => {
-      const { points, values, fixed } = insertAlong(l.points, l.run, attach.filter(a => a.line === i).map(a => a.at))
-      return simplify(points, values.map(width), tol, fixed)
-    })
+    const veins = smoothed.map((l, i) => finish(l, [...joinAt[i], ...attach.filter(a => a.line === i).map(a => a.at)]))
     const fine = v.width * Math.max(0.15, (1 - taper) * 0.75)
     for (const chain of chains) { const pts = relaxLine(chain, 12); veins.push(simplify(pts, pts.map(() => fine), tol)) }
     return veins

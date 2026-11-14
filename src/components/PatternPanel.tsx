@@ -52,7 +52,7 @@ const STARTS: Option<VeinStart>[] = [
 const IMPORT_STARTS: Option<VeinStart>[] = STARTS.map(o => ({ ...o, tip: o.value === 'centre' ? 'Veins are widest nearest the centre and narrow along the lines from there.' : `Veins are widest nearest the middle of the ${o.value === 'left' || o.value === 'right' ? `${o.value} side` : o.value} and narrow along the lines from there.` }))
 const VEIN_HINT: Record<Exclude<VeinStyle, 'none'> | 'loops', string> = {
   wing: 'Each region between veins gets its own cells, as in an insect wing. Veins run side by side near the start and spread to the far edges.',
-  leaf: 'Veins fan out from the start, branch, and run on to the edge, tapering as they go. Each region between them gets its own cells.',
+  leaf: 'Veins fan out from the start, branch, and run on to the edge, or into a vein in their way, tapering as they go. Each region between them gets its own cells.',
   loops: 'Thinner veins grow between the main veins and join where they meet, like a leaf’s finer veins. Each loop gets its own cells.',
   imported: 'Each region between your lines gets its own cells. Lines are as wide as Vein width nearest Start from, and narrow by Taper along the lines, branches included.',
 }
