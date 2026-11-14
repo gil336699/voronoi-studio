@@ -5,7 +5,7 @@ import type { Polygon, Segment } from '../voronoi/geometry'
 import type { Outline } from '../voronoi/holes'
 import type { Geometry } from '../voronoi/pattern'
 import { regionCenter, regionHeight, regionWidth, type Region } from '../voronoi/region'
-import { cutPaths, num } from './cutPaths'
+import { cutPaths, num, tidyOutline } from './cutPaths'
 import { PICTURE_OPACITY, pictureDataUrl, shownPicture } from './pictureLayer'
 import { DELAUNAY_COLOR, SITE_COLOR, siteRadius, widthBuckets } from './style'
 import type { Settings } from './settings'
@@ -66,7 +66,8 @@ export function artworkSvg(g: Geometry, points: Float64Array, s: Settings): stri
   svg += `<g id="sheet">${regionElement(g.sheet, `fill="${s.background}"`)}</g>\n`
   // The picture guide sits over any fill and under the lines, as in the view, clipped to the sheet.
   const shown = shownPicture(s)
-  const cellShapes = () => s.cellStyle === 'holes' ? g.holes.map(hole => `<path d="${outlinePath(hole.outline)}"/>\n`).join('') : `${regionElement(g.region, '')}\n`
+  // Holes as the cut files write them, without pieces under 10 µm (see tidyOutline).
+  const cellShapes = () => s.cellStyle === 'holes' ? g.holes.map(hole => tidyOutline(hole.outline)).filter(o => o !== null).map(o => `<path d="${outlinePath(o)}"/>\n`).join('') : `${regionElement(g.region, '')}\n`
   if (s.showEdges && shown && s.fill) svg += `<g id="fills" fill="${s.fillColor}" fill-rule="evenodd" stroke="none">\n${cellShapes()}</g>\n`
   if (shown) {
     const { ox, oy, k, cols, rows } = shown.tones
@@ -87,7 +88,7 @@ export function artworkSvg(g: Geometry, points: Float64Array, s: Settings): stri
     if (s.cellStyle !== 'holes' && g.veins.length) svg += `<g id="veins" fill="${s.lineColor}" stroke="none"><path fill-rule="evenodd" d="${ringsPath(g.veins)}"/></g>\n`
   }
   if (s.showDelaunay && g.delaunay.length) {
-    svg += `<g id="delaunay" fill="none" stroke="${DELAUNAY_COLOR}" stroke-opacity="0.6" stroke-width="${width}" stroke-linecap="round">`
+    svg += `<g id="delaunay" fill="none" stroke="${DELAUNAY_COLOR}" stroke-opacity="0.6" stroke-width="${width}" stroke-linecap="round" stroke-linejoin="round">`
       + `<path d="${segmentsPath(g.delaunay)}"/></g>\n`
   }
   if (s.showSites && points.length) {
@@ -101,7 +102,7 @@ export function artworkSvg(g: Geometry, points: Float64Array, s: Settings): stri
 
 export function laserSvg(g: Geometry, points: Float64Array, s: Settings): string {
   const cut = cutPaths(g, points, s)
-  const hairline = (colour: string) => `fill="none" stroke="${colour}" stroke-width="${HAIRLINE_MM}"`
+  const hairline = (colour: string) => `fill="none" stroke="${colour}" stroke-width="${HAIRLINE_MM}" stroke-linecap="round" stroke-linejoin="round"`
   const style = hairline(LASER_RED)
   let svg = header(s, false, 'Voronoi Studio cut lines')
   if (cut.delaunay.length) svg += `<g id="delaunay" ${hairline(LASER_DELAUNAY)}><path d="${segmentsPath(cut.delaunay)}"/></g>\n`

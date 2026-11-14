@@ -2,10 +2,11 @@ import { describe, expect, it } from 'vitest'
 import { arcFromBulge, type Outline } from '../voronoi/holes'
 import { buildGeometry, patternRegion } from '../voronoi/pattern'
 import { seedPoints } from '../voronoi/seeding'
-import { cutContents, cutLayers } from './cutPaths'
+import { cutContents, cutLayers, tidyOutline } from './cutPaths'
 import { cutDxf, LAYER_DELAUNAY, LAYER_INNER, LAYER_OUTER, LAYER_SITES } from './dxfExport'
 import { DEFAULTS, seedSettings, type Settings } from './settings'
 import { artworkSvg, LASER_DELAUNAY, LASER_SITES, laserSvg, outlinePath } from './svgExport'
+import { runJob } from '../worker/jobs'
 
 const design = (over: Partial<Settings> = {}) => {
   const s = { ...DEFAULTS, ...over }
@@ -56,11 +57,66 @@ describe('SVG export', () => {
     expect(laserSvg(g, points, { ...s, sheetOutline: false })).not.toContain('cut-outer')
   })
 
+  it('drops hole-outline pieces under 10 µm, keeping holes closed and arcs as arcs', () => {
+    // A square hole with a 1 µm piece, a 6 µm piece before an arc, and a last point 7 µm from the first.
+    const o: Outline = { points: [[0, 0], [0.001, 0], [10, 0], [10.006, 0], [10, 10], [0, 10], [0, 0.007]], bulges: [0, 0, 0, 0.3, 0, 0, 0] }
+    expect(tidyOutline(o)).toEqual({ points: [[0, 0], [10, 0], [10, 10], [0, 10]], bulges: [0, 0.3, 0, 0] })
+    expect(tidyOutline({ points: [[0, 0], [0.002, 0], [0, 0.002]], bulges: [0, 0, 0] })).toBeNull()
+  })
+
+  it('writes holes along veins without pieces a cutter would stall on (1.11.0 had 88 under 10 µm)', () => {
+    const s: Settings = { ...DEFAULTS, count: 400, showSites: false, seed: 3, shape: 'ellipse', veins: 'leaf', veinLoops: true, veinWidth: 2,
+      cellStyle: 'holes', web: 0.8, cornerRadius: 0.5, minHole: 0.3 }
+    let points = runJob({ kind: 'generate', settings: s }).points
+    points = runJob({ kind: 'relax', settings: s, points, steps: 20 }).points
+    const g = buildGeometry(points, s)
+    // Each piece of each hole path, from its end points (written to 1 µm, so a 10 µm piece can read 9.x µm).
+    const pieces = (d: string) => {
+      const n = d.match(/-?\d*\.?\d+/g)!.map(Number), out: number[] = []
+      const cmds = d.match(/[MLAZ]/g)!
+      let k = 0, x = 0, y = 0, x0 = 0, y0 = 0
+      for (const c of cmds) {
+        if (c === 'M') { x = x0 = n[k++]; y = y0 = n[k++] }
+        else if (c === 'L' || c === 'A') { if (c === 'A') k += 5; const nx = n[k++], ny = n[k++]; out.push(Math.hypot(nx - x, ny - y)); x = nx; y = ny }
+        else if (Math.hypot(x - x0, y - y0) > 1e-9) out.push(Math.hypot(x - x0, y - y0))
+      }
+      return out
+    }
+    const svg = laserSvg(g, points, s)
+    const holes = [...svg.matchAll(/<path d="(M[^"]*Z)"\/>/g)].map(m => m[1])
+    expect(holes.length).toBeGreaterThan(300)
+    expect(Math.min(...holes.flatMap(pieces))).toBeGreaterThanOrEqual(0.009)
+    // The DXF's hole polylines too: no two vertices in a row closer than that.
+    const pairs = dxfPairs(cutDxf(g, points, s))
+    let prev: [number, number] | null = null, nearest = Infinity
+    for (let i = 0; i < pairs.length; i++) {
+      const [c, v] = pairs[i]
+      if (c === 0 && v === 'POLYLINE') prev = null
+      if (c === 0 && v === 'VERTEX') {
+        const x = Number(pairs.slice(i, i + 12).find(([cc]) => cc === 10)![1]), y = Number(pairs.slice(i, i + 12).find(([cc]) => cc === 20)![1])
+        if (prev) nearest = Math.min(nearest, Math.hypot(x - prev[0], y - prev[1]))
+        prev = [x, y]
+      }
+    }
+    expect(nearest).toBeGreaterThanOrEqual(0.009)
+  })
+
+  it('gives every stroke in the SVG files a deliberate width, cap and join', () => {
+    for (const over of [{ cellStyle: 'holes' as const, showSites: true, showDelaunay: true }, { showDelaunay: true }]) {
+      const { s, points, g } = design(over)
+      for (const svg of [laserSvg(g, points, s), artworkSvg(g, points, s)]) {
+        const stroked = [...svg.matchAll(/<g id="([^"]+)"([^>]*)>/g)].filter(m => /stroke="(?!none)/.test(m[2]))
+        expect(stroked.length).toBeGreaterThan(1)
+        for (const [, id, attrs] of stroked) expect(attrs, id).toMatch(/stroke-width="[\d.]+".*stroke-linecap="round".*stroke-linejoin="round"|stroke-linecap="round" stroke-linejoin="round"/)
+      }
+    }
+  })
+
   it('adds the sites and Delaunay lines the view shows, in their own colours, before the cuts', () => {
     const { s, points, g } = design({ cellStyle: 'holes', showSites: true, showDelaunay: true })
     const svg = laserSvg(g, points, s)
     const sites = /<g id="sites" ([^>]*)>(.*?)<\/g>/s.exec(svg)!
-    expect(sites[1]).toBe(`fill="none" stroke="${LASER_SITES}" stroke-width="0.025"`)
+    expect(sites[1]).toBe(`fill="none" stroke="${LASER_SITES}" stroke-width="0.025" stroke-linecap="round" stroke-linejoin="round"`)
     expect(sites[2].match(/<circle /g)).toHaveLength(points.length / 2)
     const delaunay = /<g id="delaunay" ([^>]*)><path d="([^"]*)"/.exec(svg)!
     expect(delaunay[1]).toContain(`stroke="${LASER_DELAUNAY}"`)

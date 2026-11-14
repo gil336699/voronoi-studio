@@ -3,7 +3,7 @@
 // Each line appears once. Marks come first, then holes, then the outer outline, so parts don't drop out of
 // the sheet before their holes are cut. A custom sheet's own holes count as inner cuts; they follow
 // "Include the sheet outline", like the outside edge.
-import type { Segment } from '../voronoi/geometry'
+import type { Segment, Vec } from '../voronoi/geometry'
 import type { Outline } from '../voronoi/holes'
 import type { Geometry } from '../voronoi/pattern'
 import { splitHoles, type Region } from '../voronoi/region'
@@ -24,6 +24,23 @@ export type CutPaths = {
 const MIN_CUT = 0.005
 const cuttable = (segments: Segment[]) => segments.filter(([x0, y0, x1, y1]) => Math.hypot(x1 - x0, y1 - y0) >= MIN_CUT)
 
+// Hole outlines lose pieces under 10 µm, a tenth of a laser's kerf. Holes clipped along a curved vein can have
+// points 1–10 µm apart, some identical once written to 1 µm; a cutter would stall or fire a dot there. A dropped
+// point's next piece starts at the point kept before it, so the outline stays closed and arcs stay arcs.
+export const MIN_PIECE = 0.01
+export function tidyOutline({ points, bulges }: Outline, min = MIN_PIECE): Outline | null {
+  const P: Vec[] = [], B: number[] = []
+  for (let i = 0; i < points.length; i++) {
+    const p = points[i], last = P[P.length - 1]
+    if (last && Math.hypot(p[0] - last[0], p[1] - last[1]) < min) { B[B.length - 1] = bulges[i]; continue }
+    P.push(p); B.push(bulges[i])
+  }
+  // The closing piece, back to the first point.
+  while (P.length > 3 && Math.hypot(P[P.length - 1][0] - P[0][0], P[P.length - 1][1] - P[0][1]) < min) { P.pop(); B.pop() }
+  return P.length >= 3 ? { points: P, bulges: B } : null
+}
+const tidy = (outlines: Outline[]) => outlines.map(o => tidyOutline(o)).filter((o): o is Outline => o !== null)
+
 export function cutPaths(g: Geometry, points: Float64Array, s: CutSettings): CutPaths {
   const sheet = splitHoles(g.sheet)
   const outer = s.sheetOutline ? [sheet.outer] : []
@@ -32,7 +49,7 @@ export function cutPaths(g: Geometry, points: Float64Array, s: CutSettings): Cut
   const sites = s.showSites && points.length ? { points, r: siteRadius(g.region, points.length / 2) } : null
   const marks = { delaunay, sites }
   if (!s.showEdges) return { lines: [], outlines: [], inner: sheetHoles, outer, ...marks }
-  if (s.cellStyle === 'holes') return { lines: [], outlines: g.holes.map(h => h.outline), inner: sheetHoles, outer, ...marks }
+  if (s.cellStyle === 'holes') return { lines: [], outlines: tidy(g.holes.map(h => h.outline)), inner: sheetHoles, outer, ...marks }
   // The pattern's outline is its own cut when a border separates it from the sheet edge.
   // With veins, the veins' outline is cut too: it's part of the pattern's outline, and on its own when the
   // pattern reaches the sheet edge.

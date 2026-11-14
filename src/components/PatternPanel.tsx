@@ -2,6 +2,7 @@ import { memo } from 'react'
 import { fieldReady, fieldShare, RANGES, type Settings } from '../lib/settings'
 import { formatLength } from '../lib/units'
 import { Button, DraftNumber, LengthField, NumberField, Section, Segmented, SelectField, SliderField, SwitchField, type Option } from './Controls'
+import { clampNote, useNote } from './note'
 import type { Placement } from '../voronoi/seeding'
 import type { DensityMode } from '../voronoi/density'
 import type { PictureFit } from '../voronoi/picture'
@@ -84,6 +85,7 @@ export const PatternPanel = memo(function PatternPanel({ s, change, stale, onApp
   s: Settings; change: Change; stale: boolean; onApply: () => void; actualCount: number; autoSpacingValue: number
   exactSpacing: () => number; capped: boolean; onShuffle: () => void; onChoosePicture: () => void; onImportVeins: () => void
 }) {
+  const [countNote, setCountNote] = useNote()
   const grid = s.placement === 'hex' || s.placement === 'square'
   const ready = fieldReady(s)
   const loops = s.veins === 'leaf' && s.veinLoops
@@ -105,12 +107,14 @@ export const PatternPanel = memo(function PatternPanel({ s, change, stale, onApp
         <span className="field-label">
           <span id="count-label">Cells</span>
           <DraftNumber className="number-input inline-number" labelledBy="count-label" min={RANGES.count[0]} max={RANGES.count[1]}
-            value={s.count} disabled={Boolean(countLocked)} onChange={v => change({ count: Math.round(v) }, 'count')} />
+            value={s.count} disabled={Boolean(countLocked)} onChange={v => change({ count: Math.round(v) }, 'count')}
+            onClamp={(bound, past) => setCountNote(clampNote('Cells', bound.toLocaleString(), past))} />
         </span>
         <input type="range" aria-labelledby="count-label" min={Math.log(RANGES.count[0])} max={Math.log(RANGES.count[1])} step="any" value={Math.log(s.count)}
           disabled={Boolean(countLocked)} aria-valuetext={`${s.count} cells`}
           style={{ '--fill': `${((Math.log(s.count) - Math.log(RANGES.count[0])) / (Math.log(RANGES.count[1]) - Math.log(RANGES.count[0])) * 100).toFixed(1)}%` } as React.CSSProperties}
           onChange={event => change({ count: Math.round(Math.exp(Number(event.currentTarget.value))) }, 'count')} />
+        {countNote && <span className="field-note" role="status">{countNote}</span>}
       </div>
       {(grid || countLocked || capped) && <p className="hint">{capped ? 'Stopped at 20,000 points, the most the app makes. Increase the spacing.' : `${actualCount.toLocaleString()} cells made.`}</p>}
 

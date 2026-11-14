@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { signedArea } from '../voronoi/geometry'
 import { shapeFromOutlines, ShapeError } from '../voronoi/shape'
 import { contains, sheetRegion } from '../voronoi/region'
-import { parsePathData, parseTransform, PICTURE_ONLY, readSvgOutlines, SvgShapeError } from './svgShape'
+import { FINE_SHARE, parsePathData, parseTransform, PICTURE_ONLY, readSvgOutlines, SvgShapeError } from './svgShape'
 
 const PT = 25.4 / 72
 const fixture = (name: string) => readFileSync(new URL(`../../test-fixtures/${name}`, import.meta.url), 'utf8')
@@ -136,6 +136,80 @@ describe('SVG outlines', () => {
     // A clip sized to whatever uses it has no outline of its own.
     expect(() => readSvgOutlines(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><clipPath id="c" clipPathUnits="objectBoundingBox"><rect width="1" height="1"/></clipPath>
       <image clip-path="url(#c)" width="10" height="10" href="a.png"/></svg>`)).toThrow('only a picture')
+  })
+
+  it('reads a small drawing’s curves finely enough to be made bigger', () => {
+    // A 40 mm circle (two arcs) and a 40 mm open curve (one cubic), as a small drawing to be enlarged in the app.
+    const small = (size: number) => `<svg xmlns="http://www.w3.org/2000/svg" width="${size}mm" height="${size}mm" viewBox="0 0 40 40">
+      <path d="M0 20A20 20 0 1 1 40 20A20 20 0 1 1 0 20Z"/><path fill="none" stroke="#000" d="M0 20C10 40 30 0 40 20"/></svg>`
+    const { rings, lines } = readSvgOutlines(small(40))
+    // Every edge of the circle's polygon stays within 1/20,000 of the drawing's size (0.002 mm) of the circle.
+    const sag = Math.max(...rings[0].map((p, i) => {
+      const q = rings[0][(i + 1) % rings[0].length]
+      return 20 - Math.hypot((p[0] + q[0]) / 2 - 20, (p[1] + q[1]) / 2 - 20)
+    }))
+    expect(sag).toBeLessThanOrEqual(40 * FINE_SHARE * 1.01)
+    // And the open curve's pieces stay that close to the true cubic.
+    const curve = Array.from({ length: 4001 }, (_, k) => {
+      const t = k / 4000, u = 1 - t
+      return [3 * u * u * t * 10 + 3 * u * t * t * 30 + t ** 3 * 40, u ** 3 * 20 + 3 * u * u * t * 40 + t ** 3 * 20]
+    })
+    // Distance from each piece's middle to the true curve (to the segments of a 4,000-piece copy of it).
+    const toCurve = (m: number[]) => {
+      let best = Infinity
+      for (let k = 0; k + 1 < curve.length; k++) {
+        const [ax, ay] = curve[k], [bx, by] = curve[k + 1], dx = bx - ax, dy = by - ay
+        const s = Math.max(0, Math.min(1, ((m[0] - ax) * dx + (m[1] - ay) * dy) / (dx * dx + dy * dy)))
+        best = Math.min(best, Math.hypot(ax + s * dx - m[0], ay + s * dy - m[1]))
+      }
+      return best
+    }
+    const off = Math.max(...lines[0].slice(1).map((p, i) => toCurve([(p[0] + lines[0][i][0]) / 2, (p[1] + lines[0][i][1]) / 2])))
+    expect(off).toBeLessThanOrEqual(40 * FINE_SHARE * 1.01)
+    // The same drawing at 400 mm is read at the usual 0.02 mm, which is the same detail for its size.
+    const big = readSvgOutlines(small(400))
+    expect(big.rings[0].length).toBe(rings[0].length)
+    expect(big.lines[0].length).toBe(lines[0].length)
+  })
+
+  it('keeps a drawing’s exact size: curves keep their leftmost, rightmost, top and bottom points', () => {
+    const box = (polys: [number, number][][]) => {
+      const xs = polys.flat().map(p => p[0]), ys = polys.flat().map(p => p[1])
+      return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)]
+    }
+    // A circle drawn as two arcs that start at 45°, which passes its extremes between points when flattened evenly.
+    const c = 20 + 20 * Math.SQRT1_2, c2 = 20 - 20 * Math.SQRT1_2
+    const arcs = readSvgOutlines(`<svg xmlns="http://www.w3.org/2000/svg" width="300mm" height="300mm" viewBox="0 0 300 300">
+      <path d="M${c} ${c}A20 20 0 0 1 ${c2} ${c2}A20 20 0 0 1 ${c} ${c}Z"/><path d="M100 100h100v100h-100Z"/></svg>`)
+    box([arcs.rings[0]]).forEach((v, k) => expect(v).toBeCloseTo([0, 0, 40, 40][k], 9))
+    // A rotated ellipse arc: 60 × 20 mm at 30°, its extremes from the ellipse's own equation.
+    const rot = readSvgOutlines(`<svg xmlns="http://www.w3.org/2000/svg" width="300mm" height="300mm" viewBox="0 0 300 300">
+      <path d="M100 100A30 10 30 1 1 100.001 100Z"/><path d="M200 200h50v50h-50Z"/></svg>`)
+    const halfW = Math.hypot(30 * Math.cos(Math.PI / 6), 10 * Math.sin(Math.PI / 6)), halfH = Math.hypot(30 * Math.sin(Math.PI / 6), 10 * Math.cos(Math.PI / 6))
+    const [rx0, ry0, rx1, ry1] = box([rot.rings[0]])
+    expect(rx1 - rx0).toBeCloseTo(2 * halfW, 6); expect(ry1 - ry0).toBeCloseTo(2 * halfH, 6)
+    // A cubic that bulges past its end points, and a circle element.
+    const bulge = readSvgOutlines(`<svg xmlns="http://www.w3.org/2000/svg" width="300mm" height="300mm" viewBox="0 0 300 300">
+      <path d="M0 20C10 40 30 0 40 20C50 40 60 -10 0 20Z"/><circle cx="150" cy="150" r="37"/></svg>`)
+    const [, y0, , y1] = box([bulge.rings[0]])
+    // The true top and bottom of its two pieces, found by sampling them very finely.
+    let top = -Infinity, bottom = Infinity
+    for (let k = 0; k <= 200000; k++) {
+      const t = k / 200000, u = 1 - t
+      for (const y of [u ** 3 * 20 + 3 * u * u * t * 40 + t ** 3 * 20, u ** 3 * 20 + 3 * u * u * t * 40 - 3 * u * t * t * 10 + t ** 3 * 20]) {
+        top = Math.max(top, y); bottom = Math.min(bottom, y)
+      }
+    }
+    expect(y1).toBeCloseTo(top, 6); expect(y0).toBeCloseTo(bottom, 6)
+    box([bulge.rings[1]]).forEach((v, k) => expect(v).toBeCloseTo([113, 113, 187, 187][k], 9))
+  })
+
+  it('reads a small, very detailed drawing as asked when finer reading would be too many points', () => {
+    // 3,000 dots in 40 mm: about 105,000 points read finely, so it's read at 0.02 mm instead, and still opens.
+    const dots = Array.from({ length: 3000 }, (_, k) => `<circle cx="${(k % 60) * 0.65 + 0.6}" cy="${Math.floor(k / 60) * 0.75 + 0.6}" r="0.3"/>`).join('')
+    const { rings } = readSvgOutlines(`<svg xmlns="http://www.w3.org/2000/svg" width="40mm" height="40mm" viewBox="0 0 40 40">${dots}</svg>`)
+    expect(rings).toHaveLength(3000)
+    expect(rings.reduce((n, r) => n + r.length, 0)).toBeLessThan(60_000)
   })
 
   it('explains files it cannot use', () => {

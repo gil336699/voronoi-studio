@@ -81,6 +81,30 @@ function cubic(out: Vec[], p0: Vec, p1: Vec, p2: Vec, p3: Vec, tol: number, dept
   cubic(out, m, bc, c, p3, tol, depth + 1)
 }
 
+// A cubic's leftmost, rightmost, top and bottom points are kept as points, so a drawing's size comes out exact: the
+// curve is split where it turns in x or in y (where its derivative's x or y is zero), then each piece is flattened.
+function cubicExact(out: Vec[], p0: Vec, p1: Vec, p2: Vec, p3: Vec, tol: number) {
+  const ts: number[] = []
+  for (const k of [0, 1]) {
+    const d0 = p1[k] - p0[k], d1 = p2[k] - p1[k], d2 = p3[k] - p2[k]
+    const A = d0 - 2 * d1 + d2, B = 2 * (d1 - d0), C = d0
+    if (Math.abs(A) < 1e-12) { if (Math.abs(B) > 1e-12) ts.push(-C / B) } else {
+      const disc = B * B - 4 * A * C
+      if (disc >= 0) { const q = Math.sqrt(disc); ts.push((-B + q) / (2 * A), (-B - q) / (2 * A)) }
+    }
+  }
+  const lerp = (a: Vec, b: Vec, t: number): Vec => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]
+  let piece: [Vec, Vec, Vec, Vec] = [p0, p1, p2, p3], done = 0
+  for (const t of ts.filter(t => t > 1e-9 && t < 1 - 1e-9).sort((a, b) => a - b)) {
+    if (t - done < 1e-9) continue
+    const u = (t - done) / (1 - done), [q0, q1, q2, q3] = piece
+    const a = lerp(q0, q1, u), b = lerp(q1, q2, u), c = lerp(q2, q3, u), ab = lerp(a, b, u), bc = lerp(b, c, u), m = lerp(ab, bc, u)
+    cubic(out, q0, a, ab, m, tol)
+    piece = [m, bc, c, q3]; done = t
+  }
+  cubic(out, ...piece, tol)
+}
+
 // SVG's endpoint arc, turned into points (SVG spec, appendix F.6).
 function arc(out: Vec[], p0: Vec, rx: number, ry: number, rotation: number, large: boolean, sweep: boolean, p1: Vec, tol: number) {
   rx = Math.abs(rx); ry = Math.abs(ry)
@@ -103,10 +127,23 @@ function arc(out: Vec[], p0: Vec, rx: number, ry: number, rotation: number, larg
   const r = Math.max(rx, ry)
   const step = tol < r ? 2 * Math.acos(1 - tol / r) : Math.PI / 2
   const n = Math.min(1000, Math.max(1, Math.ceil(Math.abs(dt) / step)))
-  for (let i = 1; i <= n; i++) {
-    const t = t0 + (dt * i) / n
-    const ex = rx * Math.cos(t), ey = ry * Math.sin(t)
-    out.push(i === n ? p1 : [cos * ex - sin * ey + cx, sin * ex + cos * ey + cy])
+  // Evenly spaced points, plus the arc's leftmost, rightmost, top and bottom points where it passes them, so a
+  // drawing's size comes out exact. On the (rotated) ellipse those are where x or y stops changing.
+  const along = Array.from({ length: n }, (_, i) => (i + 1) / n)
+  const tx = Math.atan2(-ry * sin, rx * cos), ty = Math.atan2(ry * cos, rx * sin), turn = Math.PI * 2
+  for (const e of [tx, tx + Math.PI, ty, ty + Math.PI]) {
+    const s = dt > 0 ? (((e - t0) % turn) + turn) % turn : -((((t0 - e) % turn) + turn) % turn)
+    const f = s / dt
+    if (f > 1e-9 && f < 1 - 1e-9) along.push(f)
+  }
+  along.sort((a, b) => a - b)
+  let last = 0
+  for (const f of along) {
+    if (f - last < 1e-9) continue
+    last = f
+    if (f >= 1 - 1e-12) { out.push(p1); continue }
+    const t = t0 + dt * f, ex = rx * Math.cos(t), ey = ry * Math.sin(t)
+    out.push([cos * ex - sin * ey + cx, sin * ex + cos * ey + cy])
   }
 }
 
@@ -162,7 +199,7 @@ export function parsePathData(d: string, tol: number): Subpath[] {
         else c1 = lastCtrl ? [2 * x - lastCtrl[0], 2 * y - lastCtrl[1]] : [x, y]
         const c2: Vec = [readNumber() + ox, readNumber() + oy], p: Vec = [readNumber() + ox, readNumber() + oy]
         if (!current) begin(x, y)
-        cubic(current!.points, [x, y], c1, c2, p, tol)
+        cubicExact(current!.points, [x, y], c1, c2, p, tol)
         lastCtrl = c2; lastQuad = null; x = p[0]; y = p[1]
         break
       }
@@ -172,7 +209,7 @@ export function parsePathData(d: string, tol: number): Subpath[] {
         else q = lastQuad ? [2 * x - lastQuad[0], 2 * y - lastQuad[1]] : [x, y]
         const p: Vec = [readNumber() + ox, readNumber() + oy]
         if (!current) begin(x, y)
-        cubic(current!.points, [x, y], [x + (2 / 3) * (q[0] - x), y + (2 / 3) * (q[1] - y)], [p[0] + (2 / 3) * (q[0] - p[0]), p[1] + (2 / 3) * (q[1] - p[1])], p, tol)
+        cubicExact(current!.points, [x, y], [x + (2 / 3) * (q[0] - x), y + (2 / 3) * (q[1] - y)], [p[0] + (2 / 3) * (q[0] - p[0]), p[1] + (2 / 3) * (q[1] - p[1])], p, tol)
         lastQuad = q; lastCtrl = null; x = p[0]; y = p[1]
         break
       }
@@ -251,7 +288,8 @@ const unitOf = (text: string | undefined) => /([a-zA-Z%]*)\s*$/.exec(text ?? '')
 function ellipsePoints(cx: number, cy: number, rx: number, ry: number, tol: number): Vec[] {
   const r = Math.max(rx, ry)
   const step = tol < r ? 2 * Math.acos(1 - tol / r) : Math.PI / 2
-  const n = Math.min(2000, Math.max(8, Math.ceil((Math.PI * 2) / step)))
+  // A multiple of 4, so its leftmost, rightmost, top and bottom points are among them and its size comes out exact.
+  const n = Math.min(2000, Math.max(8, 4 * Math.ceil((Math.PI * 2) / step / 4)))
   return Array.from({ length: n }, (_, i): Vec => [cx + rx * Math.cos((i / n) * Math.PI * 2), cy + ry * Math.sin((i / n) * Math.PI * 2)])
 }
 
@@ -299,9 +337,35 @@ function outlinesOf(name: string, a: Attributes, tol: number, filled = false): {
   return { rings, open, lines }
 }
 
+// A small drawing is often made bigger once it's in: a 40 mm wing is used at 300 mm. Curves are flattened when the
+// file is read, before any resizing, so a small drawing's curves are flattened within this share of its size instead
+// when that's finer than the tolerance asked for: 0.002 mm for a 40 mm drawing, still 0.015 mm once it's 300 mm.
+// (At 0.02 mm, a 40 mm wing's outline came in as a 78-sided polygon.)
+export const FINE_SHARE = 1 / 20_000
+// Finer reading gives more points; if that's more than the sheet or the veins can take, the file is read as asked.
+const FINE_MAX_POINTS = 20_000
+
 // All closed outlines in a file, in millimetres, and its open lines. tolerance: how far flattened curves may
 // stray, in mm. linesOnly: a file of open lines is fine (for veins), so it doesn't need a closed outline.
 export function readSvgOutlines(text: string, tolerance = 0.02, linesOnly = false): SvgOutlines {
+  const asked = readAt(text, tolerance, linesOnly)
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity
+  for (const poly of [...asked.rings, ...asked.lines]) for (const [x, y] of poly) {
+    if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y
+  }
+  const fine = Math.max(x1 - x0, y1 - y0) * FINE_SHARE
+  if (!(fine > 0 && fine < tolerance)) return asked
+  try {
+    const finer = readAt(text, fine, linesOnly)
+    const count = (polys: Polygon[]) => polys.reduce((n, p) => n + p.length, 0)
+    return count(finer.rings) <= FINE_MAX_POINTS && count(finer.lines) <= FINE_MAX_POINTS ? finer : asked
+  } catch (error) {
+    if (error instanceof SvgShapeError) return asked
+    throw error
+  }
+}
+
+function readAt(text: string, tolerance: number, linesOnly: boolean): SvgOutlines {
   if (!/<svg[\s>]/i.test(text)) throw new SvgShapeError('This file is not an SVG drawing.')
   const illustrator = /Adobe Illustrator/i.test(text) || /data-name\s*=/.test(text)
   const body = text.replace(/<!--[\s\S]*?-->/g, '').replace(/<!\[CDATA\[[\s\S]*?\]\]>/g, '').replace(/<\?[\s\S]*?\?>/g, '').replace(/<!DOCTYPE[\s\S]*?>/gi, '')

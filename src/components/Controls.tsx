@@ -1,4 +1,5 @@
 import { type ReactNode, useId, useState } from 'react'
+import { clampNote, useNote } from './note'
 import { rangeFill } from '../lib/rangeFill'
 import { decimals, fromUnits, stepFor, toUnits, trimZeros, UNIT_LABEL, type Units } from '../lib/units'
 
@@ -78,9 +79,10 @@ export function SliderField({ label, value, min, max, step = 1, onChange, format
 }
 
 // A number box that lets people type freely, applying each valid value as they go and tidying up on blur.
-export function DraftNumber({ value, min, max, step = 1, digits = 0, onChange, disabled, className = 'number-input', labelledBy, label }: {
+// onClamp: told when a typed value was outside min–max and was set to the nearest end, so the field can say so.
+export function DraftNumber({ value, min, max, step = 1, digits = 0, onChange, onClamp, disabled, className = 'number-input', labelledBy, label }: {
   value: number; min: number; max: number; step?: number; digits?: number; onChange: (value: number) => void
-  disabled?: boolean; className?: string; labelledBy?: string; label?: string
+  onClamp?: (bound: number, past: 'min' | 'max') => void; disabled?: boolean; className?: string; labelledBy?: string; label?: string
 }) {
   // What was typed, and the value it was typed against. It shows only while that is still the value, so a
   // change from elsewhere (an import, a linked field, Undo) replaces it instead of being overwritten on blur.
@@ -92,7 +94,11 @@ export function DraftNumber({ value, min, max, step = 1, digits = 0, onChange, d
     // Only text that was actually typed is applied, so tabbing through a field never rounds its value.
     if (typing) {
       const v = Number(draft.text)
-      if (draft.text.trim() !== '' && Number.isFinite(v)) onChange(Math.min(max, Math.max(min, v)))
+      if (draft.text.trim() !== '' && Number.isFinite(v)) {
+        onChange(Math.min(max, Math.max(min, v)))
+        if (v < min) onClamp?.(min, 'min')
+        else if (v > max) onClamp?.(max, 'max')
+      }
     }
     setDraft(null)
   }
@@ -113,12 +119,17 @@ export function NumberField({ label, value, min, max, step = 1, digits = 0, suff
   label: string; value: number; min: number; max: number; step?: number; digits?: number; suffix?: string
   onChange: (value: number) => void; compact?: boolean
 }) {
+  // A typed value outside the range is set to the nearest end, and the field says so for a few seconds.
+  const [note, setNote] = useNote()
+  const shown = (v: number) => `${trimZeros(v.toFixed(digits))}${suffix ? ` ${suffix}` : ''}`
   return <label className={compact ? 'field compact-field' : 'field'} data-tip={unavailable || tip}>
     <span className="field-label"><span>{label}</span></span>
     <span className="number-wrap">
-      <DraftNumber value={value} min={min} max={max} step={step} digits={digits} onChange={onChange} disabled={Boolean(unavailable)} />
+      <DraftNumber value={value} min={min} max={max} step={step} digits={digits} onChange={onChange} disabled={Boolean(unavailable)}
+        onClamp={(bound, past) => setNote(clampNote(label, shown(bound), past))} />
       {suffix && <span className="suffix" aria-hidden="true">{suffix}</span>}
     </span>
+    {note && <span className="field-note" role="status">{note}</span>}
   </label>
 }
 

@@ -67,8 +67,8 @@ const baseName = (s: Settings) => {
 export function App() {
   const [first] = useState(initialDesign)
   const [status, setStatus] = useState<Status>(() => (first.restored ? { text: 'Restored your last session.' } : null))
-  // Warnings stay until something else happens; Auto-relax's step messages don't count.
-  const designStatus = useCallback((next: Status) => setStatus(prev => (next?.quiet && prev?.warning ? prev : next)), [])
+  // Warnings stay until something else happens, and a save's result until it fades; Auto-relax's step messages don't count.
+  const designStatus = useCallback((next: Status) => setStatus(prev => (next?.quiet && (prev?.warning || prev?.keep) ? prev : next)), [])
   const design = useDesign(() => first, designStatus)
   const { doc } = design
   const s = doc.settings
@@ -257,9 +257,11 @@ export function App() {
     return () => { window.removeEventListener('dragover', over); window.removeEventListener('drop', drop) }
   })
 
+  // Every save and export ends with a message, so a file never silently fails to appear.
   const report = (name: string, result: Awaited<ReturnType<typeof saveFile>>) => {
-    if (result === 'saved' || result === 'downloaded') setStatus({ text: `${result === 'saved' ? 'Saved' : 'Downloaded'} ${name}.` })
-    else if (result === 'failed') setStatus({ text: `${name} could not be saved.`, warning: true })
+    if (result === 'saved' || result === 'downloaded') setStatus({ text: `${result === 'saved' ? 'Saved' : 'Downloaded'} ${name}.`, keep: true })
+    else if (result === 'cancelled') setStatus({ text: `Cancelled: ${name} wasn’t saved.`, keep: true })
+    else setStatus({ text: `${name} could not be saved.`, warning: true })
     return result === 'saved' || result === 'downloaded'
   }
 
@@ -301,7 +303,10 @@ export function App() {
         && !(target instanceof HTMLInputElement && ['range', 'checkbox', 'radio'].includes(target.type))
       const mod = event.metaKey || event.ctrlKey
       const key = event.key.toLowerCase()
-      if (event.key === 'Escape') { setShowHelp(false); setPending(null); if (!typing) setTool('move'); return }
+      if (event.key === 'Escape') {
+        if (typing && !pending && !showHelp && target instanceof HTMLElement) { target.blur(); return }
+        setShowHelp(false); setPending(null); if (!typing) setTool('move'); return
+      }
       if (pending || showHelp) return
       if (mod && key === 's') { event.preventDefault(); void saveProject(); return }
       if (mod && key === 'o') { event.preventDefault(); openProject(); return }
@@ -366,7 +371,7 @@ export function App() {
       <TabPanel idBase="design" id="sheet" value={tab}><SheetPanel s={s} change={design.change} onImportShape={importShape} noRoom={noRoom} /></TabPanel>
       <TabPanel idBase="design" id="style" value={tab}><StylePanel s={s} change={design.change} holes={geometry.metrics.holes} dropped={geometry.metrics.dropped} /></TabPanel>
       <TabPanel idBase="design" id="file" value={tab}>
-        <FilePanel s={s} change={design.change} unsaved={design.unsaved} busy={design.busy} openError={openError}
+        <FilePanel s={s} change={design.change} unsaved={design.unsaved} busy={design.busy} openError={openError} holes={cellStyle === 'holes' ? geometry.holes.length : null}
           onNew={newDesign} onOpen={openProject} onSave={() => void saveProject()} onExport={kind => void exportFile(kind)} />
       </TabPanel>
       <input ref={fileInput} type="file" accept=".json,application/json" hidden aria-label="Choose a project file" onChange={event => {

@@ -48,6 +48,18 @@ describe('custom sheet shapes', () => {
     expect(regionArea(inner)).toBeCloseTo(Math.PI * 36 * 36 + 80 * 72 - Math.PI * 19 * 19, -1)
   })
 
+  it('keeps an imported outline’s exact size and points, not rounded to 0.01 mm', () => {
+    // A small outline with sizes and corners between 0.01 mm steps, as a 40 mm drawing to be enlarged has.
+    const ring: Polygon = [[0.0031, 0.0047], [39.7114, 0.0012], [39.7083, 10.2455], [20.1234, 10.2466], [0.0009, 10.2391]]
+    const shape = shapeFromOutlines([ring], 'small')
+    expect(shape.width).toBeCloseTo(39.7114 - 0.0009, 6)
+    expect(shape.height).toBeCloseTo(10.2466 - 0.0012, 6)
+    // Every corner is where it was, to 0.1 µm (Clipper's precision), once scaled back to millimetres.
+    const back: [number, number][] = []
+    for (let i = 0; i < shape.rings[0].length; i += 2) back.push([shape.rings[0][i] * shape.width + 0.0009, shape.rings[0][i + 1] * shape.height + 0.0012])
+    for (const p of ring) expect(Math.min(...back.map(q => Math.hypot(q[0] - p[0], q[1] - p[1])))).toBeLessThan(1e-4)
+  })
+
   it('seeds every placement inside the shape and tiles it with cells', () => {
     const region = patternRegion(settings)
     for (const placement of ['random', 'even', 'hex', 'square'] as const) {

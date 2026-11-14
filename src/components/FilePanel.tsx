@@ -10,8 +10,8 @@ import type { Change } from './PatternPanel'
 export type ExportKind = 'png' | 'svg' | 'laser' | 'dxf'
 
 // Memoised: the panel only re-renders when its own props change, not on every relax step.
-export const FilePanel = memo(function FilePanel({ s, change, unsaved, busy, onNew, onOpen, onSave, onExport, openError }: {
-  s: Settings; change: Change; unsaved: boolean; busy: boolean
+export const FilePanel = memo(function FilePanel({ s, change, unsaved, busy, holes, onNew, onOpen, onSave, onExport, openError }: {
+  s: Settings; change: Change; unsaved: boolean; busy: boolean; holes: number | null // holes in Holes style, else null
   onNew: () => void; onOpen: () => void; onSave: () => void; onExport: (kind: ExportKind) => void; openError: string
 }) {
   const [pw, ph] = pixelSize(s.width, s.height, s.dpi)
@@ -19,7 +19,10 @@ export const FilePanel = memo(function FilePanel({ s, change, unsaved, busy, onN
   const fileUnits = s.units === 'in' ? 'inches' : 'millimetres'
   const working = busy && 'Wait for the pattern to finish updating.'
   const contents = cutContents(s)
-  const nothing = !contents.length && `Nothing to cut. Turn on Sites, ${s.cellStyle === 'holes' ? 'Holes' : 'Edges'} or Delaunay above the sheet, or include the sheet outline.`
+  const nothing = !contents.length ? `Nothing to cut. Turn on Sites, ${s.cellStyle === 'holes' ? 'Holes' : 'Edges'} or Delaunay above the sheet, or include the sheet outline.`
+    // Holes on but none left: the cut file would hold no holes, only what's around them.
+    : holes === 0 && s.showEdges ? 'No holes to cut: every cell is narrower than the smallest hole once the web is taken out. Lower the web width or the smallest hole on the Style tab.'
+      : false
   const layers = cutLayers(s, s.shape === 'custom' && !!s.customShape && holeCount(s.customShape) > 0)
   return <>
     <Section title="Project">

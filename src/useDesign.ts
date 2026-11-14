@@ -11,9 +11,10 @@ import { PatternClient } from './worker/patternClient'
 // relax points. The rules for what a settings change does to the points are in lib/changes.ts.
 
 export type { Doc }
-// quiet: a routine Auto-relax message, which never replaces a warning that's showing. spoken: what screen
-// readers hear instead of the text, so a step counter isn't read out many times a second.
-export type Status = { text: string; warning?: boolean; quiet?: boolean; spoken?: string } | null
+// quiet: a routine Auto-relax message, which never replaces a warning that's showing. keep: a save or export's
+// result, which quiet messages don't replace either until it fades (before 1.11.1, "Saved …" lasted one relax step).
+// spoken: what screen readers hear instead of the text, so a step counter isn't read out many times a second.
+export type Status = { text: string; warning?: boolean; quiet?: boolean; keep?: boolean; spoken?: string } | null
 
 const AUTO_MAX_STEPS = 3000
 

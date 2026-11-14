@@ -40,7 +40,9 @@ const pointCount = (rings: Polygon[]) => rings.reduce((n, r) => n + r.length, 0)
 // A shape from closed outlines in millimetres. Outlines inside others become holes, the way laser software
 // reads nested cut lines, and overlapping outlines cancel out where they overlap (even-odd).
 export function shapeFromOutlines(outlines: Polygon[], name: string, sized: CustomShape['sized'] = 'file'): CustomShape {
-  let rings = fromPaths(unionD(toPaths(outlines), FillRule.EvenOdd))
+  // At Clipper's 0.1 µm: its two-argument union rounds to 0.01 mm, which put every imported outline on a 0.01 mm grid
+  // (a 39.711 × 10.246 mm wing came in at 39.71 × 10.24, and its curves stepped once it was enlarged).
+  let rings = fromPaths(unionD(toPaths(outlines), [], FillRule.EvenOdd, PRECISION))
   let tolerance = 0.002
   rings = fromPaths(simplifyPathsD(toPaths(rings), tolerance, true))
   while (pointCount(rings) > MAX_SHAPE_POINTS && tolerance < 2) {

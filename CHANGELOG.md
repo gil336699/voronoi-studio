@@ -1,5 +1,17 @@
 # Voronoi Studio Changelog
 
+## 1.12.1 2026-11-14
+
+- **Exports always end in a file or a message.** Where a browser has the save dialog's API but can't show the dialog, as some embedded and in-app browsers do, Laser SVG, DXF, SVG, PNG and Save now download instead. Before, the dialog's instant refusal looked like a cancel, so those exports made no file and said nothing.
+- **A cancelled save says so:** "Cancelled: … wasn't saved." Before, the status kept its old message, so a cancelled PNG looked as if it was still being made.
+- **"Saved" stays up during Auto-relax.** A save's or export's message now stays for its few seconds while Auto-relax runs. Before, the next relax step replaced it at once, so it was never seen.
+- **No cut files with nothing to cut.** With Holes and no cell big enough for a hole, Laser SVG and DXF are off, and the File tab says why and what to change. Before, they made a file with only the outline in it.
+- **A number past a field's limit says what happened.** It's still set to the nearest value allowed, and the field now says so for a few seconds, such as "Width can't be under 0.197 in, so it's 0.197 in." Before, the value changed without a word.
+- **Esc leaves a number box,** so the keyboard shortcuts work again without the mouse.
+- **Cleaner files for cutting and artwork.** Hole outlines have no pieces shorter than 10 µm (a Leaf loops design had 174 of them in its laser file, 6 of zero length), and every stroke in Laser SVG and SVG has round caps and joins, so ends and corners look the same in every program. Before, the laser file's lines used SVG's defaults, flat ends and pointed corners.
+- **Imported drawings keep their exact size and their curves.** An imported outline now keeps its points to 0.1 µm. Before, it was rounded to 0.01 mm: a 39.711 × 10.246 mm drawing came in at 39.71 × 10.24, so at 300 mm wide it was 77.36 mm tall instead of 77.40. Curves are also flattened to within 1/20,000 of the drawing's size when that's finer than 0.02 mm, and keep their leftmost, rightmost, top and bottom points, so a small drawing stays smooth when it's made bigger. A 40 mm lacewing wing enlarged to 300 mm now follows its curves to within 0.015 mm, where 1.12.0 strayed by 0.12 mm, and all 228 of its veins come in (1.12.0 dropped one under 0.08 mm long).
+- Saved designs open as before, with the shape they were saved with. Patterns are unchanged: the fixes are in saving, exporting, messages and importing.
+
 ## 1.12.0 2026-11-14
 
 - **Imported veins taper along the veins.** With **Taper** on, imported veins now narrow with distance along the veins from **Start from**, as Wing veins do. A branch begins as wide as the vein it leaves, and the finest veins out at the margin are the thinnest, so a traced insect wing looks like one. Before, each line narrowed on its own from its first point: a branch started as wide as the veins at the base, wider than the vein it left, and a line drawn from the margin inward was widest at the margin.

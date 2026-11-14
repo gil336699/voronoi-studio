@@ -43,6 +43,7 @@ Narrower windows show tool and action buttons as symbols only. On tablets the sh
 
 - **Hover any control**, or move to it with Tab, to see a one-sentence description and its keyboard shortcut. Unavailable controls say why, for example why the cell count is locked when you set the spacing yourself.
 - **Measurements with a dotted underline** explain themselves on hover.
+- **A number past a field's limit** is set to the nearest value allowed, and the field says so for a few seconds.
 - **Quick start** shows three steps on the first visit. Reopen it from the **?** button, which also lists every shortcut.
 
 ## Workflow
@@ -75,7 +76,7 @@ Any closed outline in an SVG can be the sheet: a logo, a lamp shade, a pill-shap
 
 | What | How it works |
 | --- | --- |
-| What's read | Paths, rectangles (rounded too), circles, ellipses and polygons, with their transforms. Curves are flattened to within 0.02 mm. Open lines are left out, and the app says how many. |
+| What's read | Paths, rectangles (rounded too), circles, ellipses and polygons, with their transforms. Curves are flattened to within 0.02 mm, or 1/20,000 of the drawing's size when that's finer (0.002 mm for a 40 mm drawing), and keep their leftmost, rightmost, top and bottom points, so the size comes out exact and a small drawing stays smooth when it's made bigger. Points are kept to 0.1 µm. Open lines are left out, and the app says how many. |
 | Holes | Outlines inside other outlines are holes, the way laser software reads nested cut lines. Overlapping outlines cancel where they overlap. |
 | Separate pieces | Every piece gets its share of cells, such as each letter of a logo. Even placement grows outwards from its points, so it starts again in any piece it can't reach. A border shrinks every piece, so thin letters can disappear; use a small or zero border for lettering. If the border leaves nothing, the status and the Sheet tab say so. |
 | Pictures | When Illustrator can't write a shape's look as SVG (a freeform gradient, a mesh or an effect), it saves a picture of the shape trimmed by a clipping mask. A file like that, with no closed outlines of its own, gives the mask's outline instead, placed where the mask is used, and the app says so. A picture with no mask can't be used; the app says how to fix it in Illustrator. |
@@ -170,7 +171,9 @@ Long cells leave long, thin webs between them, so a stretched panel is stiffer a
 | PNG | The design at the sheet's pixels per inch, with the density picture if shown, optionally with a transparent background. | px |
 | Project | Settings, every point, any imported shape and any density picture, as `.voronoi.json` (schema `voronoi-studio/project`, version 5, with any veins; versions 1 to 4 open too). | mm |
 
-Every export holds what the view shows: the **Sites**, **Edges** or **Holes**, and **Delaunay** buttons above the sheet decide what goes in, so turn Sites off for a file with only cuts. The density picture goes in the SVG and PNG when shown, but never in Laser SVG or DXF, where laser software would engrave it. The File tab lists what a cut file will hold. Cut files contain each line once, so a laser never cuts the same edge twice, and leave out cuts shorter than 5 µm, which a laser would only fire as a dot. Exports always show the whole sheet, whatever the zoom.
+Every export holds what the view shows: the **Sites**, **Edges** or **Holes**, and **Delaunay** buttons above the sheet decide what goes in, so turn Sites off for a file with only cuts. The density picture goes in the SVG and PNG when shown, but never in Laser SVG or DXF, where laser software would engrave it. The File tab lists what a cut file will hold. Cut files contain each line once, so a laser never cuts the same edge twice, and leave out cuts shorter than 5 µm, which a laser would only fire as a dot; hole outlines have no piece shorter than 10 µm. Every stroke has round caps and joins. With Holes and no cell big enough for a hole, Laser SVG and DXF are off, and the File tab says why. Exports always show the whole sheet, whatever the zoom.
+
+Exports and Save use the system save dialog where the browser has one, and download otherwise, including in browsers that have the dialog's API but can't show it. The status says what happened: saved, downloaded, or cancelled.
 
 ## Controls
 
@@ -215,7 +218,7 @@ Every export holds what the view shows: the **Sites**, **Edges** or **Holes**, a
 | 1, 2, 3, 4 | Sites, edges or holes, Delaunay, picture |
 | ⌘Z, ⇧⌘Z | Undo, redo |
 | ⌘S, ⌘O | Save, open project |
-| Esc | Close a dialog, or go back to Move |
+| Esc | Close a dialog, leave a number box, or go back to Move |
 | ? | Shortcuts and quick start |
 
 On Windows and Linux, use Ctrl for ⌘. Space pans, as in most design tools, rather than running the main action.

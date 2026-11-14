@@ -172,6 +172,8 @@ select {
 select:hover { background-color: var(--well-strong); }
 .field > select { width: 100%; }
 .number-wrap { position: relative; display: block; }
+/* Says when a typed value was set to the nearest end of its range. */
+.field-note { font-size: 12px; line-height: 1.35; color: var(--label-2); }
 .number-input { width: 100%; min-height: 28px; padding: 0 10px; border: 0; border-radius: var(--r-control); background: var(--well); color: var(--label); font-variant-numeric: tabular-nums; }
 .number-wrap .number-input { padding-right: 40px; }
 .number-input:disabled { color: var(--label-3); }
