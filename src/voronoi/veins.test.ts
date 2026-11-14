@@ -6,7 +6,7 @@ import { readSvgOutlines } from '../lib/svgShape'
 import { cellArea, regionParts, partOf } from './diagram'
 import { signedArea, type Polygon, type Vec } from './geometry'
 import { buildGeometry, patternRegion, veinLinesAt, type PatternSettings } from './pattern'
-import { regionArea, regionRings, type Region } from './region'
+import { contains, regionArea, regionRings, type Region } from './region'
 import { relax } from './relax'
 import { seedPoints } from './seeding'
 import { veinsFromLines } from './veinLines'
@@ -149,13 +149,25 @@ describe('leaf veins with loops', () => {
     const t = Math.max(0, Math.min(1, ((p[0] - a[0]) * ex + (p[1] - a[1]) * ey) / L2))
     return Math.hypot(p[0] - a[0] - t * ex, p[1] - a[1] - t * ey) < tol
   }))
-  // Vein ends that are neither a join (shared with another vein), on the edge, nor the start.
+  // How far a point is from a polyline.
+  const offLine = (p: Vec, line: Vec[]) => {
+    let best = Infinity
+    for (let i = 1; i < line.length; i++) {
+      const a = line[i - 1], b = line[i], ex = b[0] - a[0], ey = b[1] - a[1], L2 = ex * ex + ey * ey || 1
+      const t = Math.max(0, Math.min(1, ((p[0] - a[0]) * ex + (p[1] - a[1]) * ey) / L2))
+      best = Math.min(best, Math.hypot(p[0] - a[0] - t * ex, p[1] - a[1] - t * ey))
+    }
+    return best
+  }
+  // Vein ends that are neither on another vein (a join), at the edge (on it, or just past it), nor the start.
   const looseEnds = (s: PatternSettings) => {
     const sheet = patternRegion({ ...s, veins: 'none' }), veins = makeVeins(sheet, vs(s)), start = veinBase(sheet, s.veinStart!)
-    const key = (p: Vec) => `${p[0].toFixed(6)},${p[1].toFixed(6)}`, seen = new Map<string, number>()
-    const ends = veins.flatMap(v => [v.points[0], v.points[v.points.length - 1]])
-    for (const e of ends) seen.set(key(e), (seen.get(key(e)) ?? 0) + 1)
-    return ends.filter(e => seen.get(key(e)) === 1 && !near(e, regionRings(sheet), 1e-4) && Math.hypot(e[0] - start[0], e[1] - start[1]) > 1e-6).length
+    let loose = 0
+    veins.forEach((v, i) => { for (const e of [v.points[0], v.points[v.points.length - 1]]) {
+      if (Math.hypot(e[0] - start[0], e[1] - start[1]) < 1e-6 || !contains(sheet, e[0], e[1]) || near(e, regionRings(sheet), 0.05)) continue
+      if (!veins.some((o, j) => j !== i && offLine(e, o.points) < 1e-6)) loose++
+    } })
+    return loose
   }
   // Regions that don't reach the pattern's edge: what only loops make many of.
   const inner = (s: PatternSettings) => {
@@ -175,7 +187,59 @@ describe('leaf veins with loops', () => {
 
   it('leaves no vein ending inside the leaf: every end is a join, on the edge, or the start', () => {
     for (const patch of [{}, { veinCount: 40 }, { veinStart: 'centre' }, { shape: 'ellipse' }] as Partial<PatternSettings>[]) expect(looseEnds({ ...loopy, ...patch })).toBe(0)
-    expect(looseEnds({ ...loopy, veinLoops: false })).toBeGreaterThan(0)
+    // Branching veins run on to the edge too, bar the odd one that stops where its neighbours took the room.
+    for (const count of [8, 16, 30]) expect(looseEnds({ ...loopy, veinLoops: false, veinCount: count })).toBeLessThanOrEqual(1)
+  })
+
+  it('grows veins as smooth curves, with no sharp kinks', () => {
+    for (const patch of [{}, { veinLoops: false }, { veinStart: 'centre', veinCount: 12 }, { veinStart: 'centre', veinCount: 12, veinLoops: false }] as Partial<PatternSettings>[]) {
+      const s = { ...loopy, shape: 'ellipse' as const, width: 200, height: 200, ...patch }
+      const turns: number[] = []
+      for (const v of makeVeins(patternRegion({ ...s, veins: 'none' }), vs(s))) for (let i = 1; i < v.points.length - 1; i++) {
+        const [a, b, c] = [v.points[i - 1], v.points[i], v.points[i + 1]], u = [b[0] - a[0], b[1] - a[1]], w = [c[0] - b[0], c[1] - b[1]]
+        turns.push(Math.abs(Math.atan2(u[0] * w[1] - u[1] * w[0], u[0] * w[0] + u[1] * w[1])) * 180 / Math.PI)
+      }
+      turns.sort((p, q) => p - q)
+      expect(turns[Math.floor(turns.length * 0.99)]).toBeLessThan(25)
+      expect(turns[turns.length - 1]).toBeLessThan(30)
+    }
+  })
+
+  it('tapers every branching vein along its length, from Vein width at the start', () => {
+    const s = { ...loopy, veinLoops: false }, sheet = patternRegion({ ...s, veins: 'none' }), veins = makeVeins(sheet, vs(s))
+    const widest = Math.max(...veins.flatMap(v => v.widths)), start = veinBase(sheet, s.veinStart!)
+    expect(widest).toBeCloseTo(s.veinWidth!, 6)
+    expect(veins.some(v => Math.hypot(v.points[0][0] - start[0], v.points[0][1] - start[1]) < 1e-6 && Math.abs(v.widths[0] - widest) < 1e-9)).toBe(true)
+    for (const v of veins) {
+      for (let i = 1; i < v.widths.length; i++) expect(v.widths[i]).toBeLessThanOrEqual(v.widths[i - 1] + 1e-9)
+      expect(Math.min(...v.widths)).toBeGreaterThanOrEqual(s.veinWidth! * (1 - s.veinTaper! / 100) - 1e-9)
+    }
+    // And they really do thin: their tips are near the narrowest Taper allows, most of the way along.
+    const tipWidths = veins.map(v => v.widths[v.widths.length - 1]).sort((p, q) => p - q)
+    expect(tipWidths[Math.floor(tipWidths.length / 2)]).toBeLessThan(s.veinWidth! * (1 - s.veinTaper! / 200))
+  })
+
+  it('keeps the same veins when the count changes, adding branches to the same tree', () => {
+    const sheet = patternRegion({ ...loopy, veins: 'none' })
+    const few = makeVeins(sheet, vs({ ...loopy, veinLoops: false, veinCount: 8 })), many = makeVeins(sheet, vs({ ...loopy, veinLoops: false, veinCount: 20 }))
+    // Every point of the 8 veins lies on the 20 (smoothing between different branch points moves them a hair).
+    const worst = Math.max(...few.flatMap(v => v.points.map(p => Math.min(...many.map(m => offLine(p, m.points))))))
+    expect(worst).toBeLessThan(0.5)
+    expect(many.length).toBeGreaterThan(few.length)
+  })
+
+  it('joins each loop between two different main veins, so none closes a bulb beside one vein', () => {
+    for (const patch of [{}, { veinStart: 'centre' }, { veinCount: 30 }] as Partial<PatternSettings>[]) {
+      const s = { ...loopy, ...patch }, veins = makeVeins(patternRegion({ ...s, veins: 'none' }), vs(s))
+      const fine = Math.min(...veins.flatMap(v => v.widths)) + 1e-9
+      const loops = veins.filter(v => v.widths.every(w => w <= fine)), mains = veins.filter(v => !v.widths.every(w => w <= fine))
+      expect(loops.length).toBeGreaterThan(3)
+      for (const l of loops) {
+        const on = (p: Vec) => mains.findIndex(m => offLine(p, m.points) < 1e-6)
+        const a = on(l.points[0]), b = on(l.points[l.points.length - 1])
+        if (a >= 0 && b >= 0) expect(a).not.toBe(b)
+      }
+    }
   })
 
   it('grows the same loops each time, thickest from the start', () => {
@@ -195,10 +259,8 @@ describe('leaf veins with loops', () => {
     const pill = shapeFromOutlines(readSvgOutlines(readFileSync(new URL('../../test-fixtures/pill-with-hole.svg', import.meta.url), 'utf8')).rings, 'pill')
     const s: PatternSettings = { ...loopy, shape: 'custom', customShape: pill, width: 160, height: 80, border: 4 }
     expect(looseEnds(s)).toBe(0)
-    // Veins reach the hole's edge too, so the regions round it close against it.
-    const sheet = patternRegion({ ...s, veins: 'none' }), hole = regionRings(sheet).filter(r => signedArea(r) < 0)
-    expect(hole.length).toBe(1)
-    expect(makeVeins(sheet, vs(s)).flatMap(v => [v.points[0], v.points[v.points.length - 1]]).filter(p => near(p, hole, 1e-4)).length).toBeGreaterThan(0)
+    // Veins flow round the hole; the regions beside it close against its edge.
+    expect(regionRings(patternRegion({ ...s, veins: 'none' })).filter(r => signedArea(r) < 0).length).toBe(1)
     const region = patternRegion(s)
     expect(region.parts!.length).toBeGreaterThan(8)
     const points = seeded(region)

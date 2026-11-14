@@ -193,195 +193,242 @@ function wingVeins(region: Region, base: Vec, count: number, centre: boolean): {
 
 // ---------- leaf: space colonization ----------
 
-function leafVeins(region: Region, base: Vec, count: number): { chains: Vec[][]; tips: number[][]; rootTips: number } {
-  const a = Math.sqrt(regionArea(region) / Math.max(1, count * 10)) // spacing of the targets
+// Segments in a grid, for nearest-segment queries against the region's outline.
+class SegmentGrid {
+  private map = new Map<number, number[]>()
+  private segs: number[][] = []
+  constructor(private cell: number) {}
+  private key(i: number, j: number) { return (i + 30000) * 60001 + (j + 30000) }
+  add(ax: number, ay: number, bx: number, by: number) {
+    const id = this.segs.length, c = this.cell
+    this.segs.push([ax, ay, bx, by])
+    for (let i = Math.floor(Math.min(ax, bx) / c); i <= Math.floor(Math.max(ax, bx) / c); i++)
+      for (let j = Math.floor(Math.min(ay, by) / c); j <= Math.floor(Math.max(ay, by) / c); j++) {
+        const k = this.key(i, j), list = this.map.get(k)
+        if (list) list.push(id); else this.map.set(k, [id])
+      }
+  }
+  // The nearest point within r on any segment.
+  nearest(x: number, y: number, r: number): { d: number; x: number; y: number } | null {
+    let best: { d: number; x: number; y: number } | null = null
+    const c = this.cell
+    for (let i = Math.floor((x - r) / c); i <= Math.floor((x + r) / c); i++)
+      for (let j = Math.floor((y - r) / c); j <= Math.floor((y + r) / c); j++)
+        for (const id of this.map.get(this.key(i, j)) ?? []) {
+          const [ax, ay, bx, by] = this.segs[id], ex = bx - ax, ey = by - ay, L2 = ex * ex + ey * ey
+          const t = L2 > 0 ? Math.max(0, Math.min(1, ((x - ax) * ex + (y - ay) * ey) / L2)) : 0
+          const px = ax + ex * t, py = ay + ey * t, d = Math.hypot(x - px, y - py)
+          if (d <= r && (!best || d < best.d)) best = { d, x: px, y: py }
+        }
+    return best
+  }
+}
+
+// Space colonization (Runions et al. 2005) set up like Jason Webb's "bounds" experiment, at its proportions:
+// attractors fill the leaf densely (blue noise, 1/75 of its size apart), and veins grow from the start in short steps
+// (1/140 of the size), each toward the attractors within 1/23 of the size that have no nearer vein, with a little
+// jitter; an attractor goes once a vein comes within a step of it. That grows a dense, smooth tree, the same for every
+// vein count, so it's kept for the last few regions and starts.
+type Tree = { x: number[]; y: number[]; parent: number[]; children: number[][]; tips: number[]; D: number; spacing: number }
+const trees: { key: string; rings: unknown; tree: Tree }[] = []
+function growTree(region: Region, base: Vec): Tree {
+  const key = [region.shape, region.x0, region.y0, region.x1, region.y1, base[0], base[1]].join('|')
+  const hit = trees.find(t => t.key === key && t.rings === region.rings)
+  if (hit) return hit.tree
+  const size = Math.max(regionWidth(region), regionHeight(region))
+  const spacing = size / 75, D = size / 140, reach = size / 23, kill = D
   const flat = { mode: 'none' as const, strength: 1, angle: 0, invert: false }
-  const targets = Array.from(poissonDisk(region, a, 30, flat, createRng(7919 + count)).points)
+  const targets = Array.from(poissonDisk(region, spacing, 30, flat, createRng(7919)).points)
   const tx: number[] = [], ty: number[] = []
   for (let i = 0; i < targets.length; i += 2) { tx.push(targets[i]); ty.push(targets[i + 1]) }
-  const D = a * 0.45, kill = a * 0.9, reach = a * 5
-  const nx: number[] = [], ny: number[] = [], parent: number[] = []
-  // Nodes in a grid of reach-sized cells, for nearest-node and too-close checks.
-  const grid = new Map<string, number[]>()
-  const cellOf = (x: number, y: number) => `${Math.floor(x / reach)},${Math.floor(y / reach)}`
-  const add = (x: number, y: number, p: number) => { nx.push(x); ny.push(y); parent.push(p); const k = cellOf(x, y); const l = grid.get(k) ?? []; l.push(nx.length - 1); grid.set(k, l) }
-  const near = (x: number, y: number, r: number): { n: number; d: number } => {
+  const x: number[] = [], y: number[] = [], parent: number[] = []
+  // Points in a grid of reach-sized cells, for nearest-point and too-close checks.
+  const grid = new Map<number, number[]>()
+  const keyOf = (i: number, j: number) => (i + 30000) * 60001 + (j + 30000)
+  const add = (px: number, py: number, p: number) => {
+    x.push(px); y.push(py); parent.push(p)
+    const k = keyOf(Math.floor(px / reach), Math.floor(py / reach)), list = grid.get(k)
+    if (list) list.push(x.length - 1); else grid.set(k, [x.length - 1])
+  }
+  const near = (px: number, py: number, r: number): { n: number; d: number } => {
     let n = -1, d = r
-    const cx = Math.floor(x / reach), cy = Math.floor(y / reach)
-    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) for (const m of grid.get(`${cx + dx},${cy + dy}`) ?? []) {
-      const e = Math.hypot(nx[m] - x, ny[m] - y); if (e < d) { d = e; n = m }
+    const cx = Math.floor(px / reach), cy = Math.floor(py / reach)
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) for (const m of grid.get(keyOf(cx + dx, cy + dy)) ?? []) {
+      const e = Math.hypot(x[m] - px, y[m] - py); if (e < d) { d = e; n = m }
     }
     return { n, d }
   }
+  const rng = createRng(104729)
   add(base[0], base[1], -1)
   const alive = new Uint8Array(tx.length).fill(1)
-  for (let iter = 0; iter < 3000 && nx.length < 20000; iter++) {
-    // Each target pulls on its nearest node within reach; the node grows one step toward the pull.
+  for (let iter = 0; iter < 4000 && x.length < 60000; iter++) {
+    // Each attractor pulls on its nearest vein point within reach; that point grows one step toward its pulls.
     const pull = new Map<number, Vec>()
     for (let t = 0; t < tx.length; t++) {
       if (!alive[t]) continue
       const { n, d } = near(tx[t], ty[t], reach)
       if (n < 0) continue
       if (d < kill) { alive[t] = 0; continue }
-      const v = pull.get(n) ?? [0, 0]
-      v[0] += (tx[t] - nx[n]) / d; v[1] += (ty[t] - ny[n]) / d
-      pull.set(n, v)
+      const v = pull.get(n)
+      if (v) { v[0] += (tx[t] - x[n]) / d; v[1] += (ty[t] - y[n]) / d } else pull.set(n, [(tx[t] - x[n]) / d, (ty[t] - y[n]) / d])
     }
     let grew = 0
     for (const [n, [vx, vy]] of pull) {
       const len = Math.hypot(vx, vy)
       if (len < 1e-9) continue
-      const x = nx[n] + (vx / len) * D, y = ny[n] + (vy / len) * D
-      // Targets pulling opposite ways would pile nodes on one spot, and growth must stay inside.
-      if (!contains(region, x, y) || near(x, y, D * 0.5).n >= 0) continue
-      add(x, y, n); grew++
+      // Webb's jitter, a tenth of a unit each way, so veins don't run dead straight.
+      const jx = vx / len + (rng() - 0.5) * 0.2, jy = vy / len + (rng() - 0.5) * 0.2, j = Math.hypot(jx, jy)
+      const px = x[n] + (jx / j) * D, py = y[n] + (jy / j) * D
+      // Attractors pulling opposite ways would pile points on one spot, and growth must stay inside.
+      if (!contains(region, px, py) || near(px, py, D * 0.45).n >= 0) continue
+      add(px, py, n); grew++
     }
     if (!grew) break
   }
-  // Tips fed by each node (the pipe model), then keep the branches that feed enough tips for about `count` ends.
-  const tips = new Array(nx.length).fill(0)
-  const children: number[][] = nx.map(() => [])
-  for (let n = 1; n < nx.length; n++) children[parent[n]].push(n)
-  for (let n = nx.length - 1; n >= 0; n--) tips[n] = children[n].length ? children[n].reduce((s, c) => s + tips[c], 0) : 1
-  const endsAt = (limit: number) => { let ends = 0; for (let n = 0; n < nx.length; n++) if (tips[n] >= limit && !children[n].some(c => tips[c] >= limit)) ends++; return ends }
+  // Tips fed by each point (the pipe model). A point is only added after its parent, so going down the indices
+  // visits children first.
+  const children: number[][] = x.map(() => [])
+  for (let n = 1; n < x.length; n++) children[parent[n]].push(n)
+  const tips = new Array<number>(x.length).fill(0)
+  for (let n = x.length - 1; n >= 0; n--) tips[n] = children[n].length ? children[n].reduce((s, c) => s + tips[c], 0) : 1
+  const tree = { x, y, parent, children, tips, D, spacing }
+  trees.unshift({ key, rings: region.rings, tree })
+  if (trees.length > 4) trees.pop()
+  return tree
+}
+
+// The tree's main veins: the branches that feed the most tips, about `ends` of them. Each carries on along its own
+// heaviest branch to where growth stopped, then curves the last little way to the edge, so its regions close. Widths follow Webb's canalization: each point is
+// as thick as its longest run to a tip, so veins taper all along their length. Returns the veins between branch points,
+// each point with its run to a tip (mm), and the longest run.
+type Line = { points: Vec[]; run: number[] }
+function mainVeins(region: Region, tree: Tree, ends: number): { lines: Line[]; longest: number } {
+  const { x, y, parent, children, tips, D, spacing } = tree
+  const n = x.length
+  const endsAt = (limit: number) => { let e = 0; for (let i = 0; i < n; i++) if (tips[i] >= limit && !children[i].some(c => tips[c] >= limit)) e++; return e }
   let lo = 1, hi = Math.max(1, tips[0])
-  while (lo < hi) { const mid = Math.floor((lo + hi + 1) / 2); if (endsAt(mid) >= count) lo = mid; else hi = mid - 1 }
-  const limit = lo
-  const chains: Vec[][] = [], chainTips: number[][] = []
-  // Extensions drawn so far, so later ones stop where they meet them.
-  const drawn: Vec[] = []
-  const blocked = (x: number, y: number, own: Set<number>) => {
-    const cx = Math.floor(x / reach), cy = Math.floor(y / reach)
-    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) for (const m of grid.get(`${cx + dx},${cy + dy}`) ?? []) {
-      if (!own.has(m) && tips[m] >= limit && Math.hypot(nx[m] - x, ny[m] - y) < D * 0.7) return true
+  while (lo < hi) { const mid = Math.floor((lo + hi + 1) / 2); if (endsAt(mid) >= ends) lo = mid; else hi = mid - 1 }
+  const kept = new Uint8Array(n)
+  for (let i = 0; i < n; i++) if (tips[i] >= lo) kept[i] = 1
+  const size = Math.max(regionWidth(region), regionHeight(region))
+  const edges = new SegmentGrid(size / 40)
+  for (const ring of regionRings(region)) for (let i = 0; i < ring.length; i++) { const p = ring[i], q = ring[(i + 1) % ring.length]; edges.add(p[0], p[1], q[0], q[1]) }
+  const dir = (a: number, b: number): Vec => { const ux = x[b] - x[a], uy = y[b] - y[a], L = Math.hypot(ux, uy) || 1; return [ux / L, uy / L] }
+  const tails = new Map<number, Vec[]>()
+  for (let e = 0; e < n; e++) {
+    if (!kept[e] || children[e].some(c => tips[c] >= lo)) continue
+    // Carry on along the heaviest branch to where growth stopped, as the real vein does.
+    let last = e
+    while (children[last].length) { last = children[last].reduce((b, k) => (tips[k] > tips[b] ? k : b)); kept[last] = 1 }
+    // Then curve the last little way to the edge: steer from the vein's heading toward the nearest edge point.
+    let back = last
+    for (let k = 0; k < 6 && parent[back] >= 0; k++) back = parent[back]
+    let h = dir(back, last), px = x[last], py = y[last]
+    const tail: Vec[] = []
+    for (let k = 0; k < 60; k++) {
+      const near = edges.nearest(px, py, spacing * 8)
+      if (!near) break
+      const to = [near.x - px, near.y - py], L = Math.hypot(to[0], to[1]) || 1, w = Math.min(1, 0.25 + k * 0.08)
+      const hx = h[0] * (1 - w) + (to[0] / L) * w, hy = h[1] * (1 - w) + (to[1] / L) * w, hl = Math.hypot(hx, hy) || 1
+      h = [hx / hl, hy / hl]
+      const qx = px + h[0] * D, qy = py + h[1] * D
+      if (!contains(region, qx, qy)) {
+        let a = 0, b = D
+        for (let s = 0; s < 20; s++) { const m = (a + b) / 2; if (contains(region, px + h[0] * m, py + h[1] * m)) a = m; else b = m }
+        tail.push([px + h[0] * (b + D * 0.05), py + h[1] * (b + D * 0.05)])
+        tails.set(last, tail)
+        break
+      }
+      px = qx; py = qy; tail.push([px, py])
     }
-    return drawn.some(([px, py]) => Math.hypot(px - x, py - y) < D * 0.7)
   }
+  // Each kept point's longest run to a tip (its own tail included).
+  const run = new Array<number>(n).fill(0)
+  for (let i = n - 1; i >= 0; i--) {
+    if (!kept[i]) continue
+    let r = 0
+    const tail = tails.get(i)
+    if (tail) { let s = 0, p: Vec = [x[i], y[i]]; for (const q of tail) { s += Math.hypot(q[0] - p[0], q[1] - p[1]); p = q } r = s }
+    for (const c of children[i]) if (kept[c]) r = Math.max(r, run[c] + Math.hypot(x[c] - x[i], y[c] - y[i]))
+    run[i] = r
+  }
+  const lines: Line[] = []
   const walk = (start: number) => {
-    for (const first of children[start].filter(c => tips[c] >= limit)) {
-      const chain: Vec[] = [[nx[start], ny[start]]], t: number[] = [tips[start]]
-      const own = new Set<number>([start])
-      let n = first
+    for (const first of children[start].filter(c => kept[c])) {
+      const points: Vec[] = [[x[start], y[start]]], r: number[] = [run[start]]
+      let c = first
       for (;;) {
-        chain.push([nx[n], ny[n]]); t.push(tips[n]); own.add(n)
-        const kept = children[n].filter(c => tips[c] >= limit)
-        if (kept.length !== 1) {
-          if (kept.length > 1) walk(n)
+        points.push([x[c], y[c]]); r.push(run[c])
+        const next = children[c].filter(k => kept[k])
+        if (next.length !== 1) {
+          if (next.length > 1) walk(c)
           else {
-            // A tip: carry on in the same direction to the edge, so the veins close off their regions.
-            const [px, py] = chain[chain.length - 2], [qx, qy] = chain[chain.length - 1]
-            const len = Math.hypot(qx - px, qy - py) || 1, ux = (qx - px) / len, uy = (qy - py) / len
-            let x = qx, y = qy, steps = 0, met = false
-            while (contains(region, x + ux * D, y + uy * D) && steps++ < 2000) {
-              x += ux * D; y += uy * D
-              if (steps > 1 && blocked(x, y, own)) { met = true; break }
-              drawn.push([x, y])
-            }
-            if (met) chain.push([x, y])
-            else {
-              let lo2 = 0, hi2 = D
-              for (let k = 0; k < 20; k++) { const m = (lo2 + hi2) / 2; if (contains(region, x + ux * m, y + uy * m)) lo2 = m; else hi2 = m }
-              chain.push([x + ux * (hi2 + D * 0.05), y + uy * (hi2 + D * 0.05)])
-            }
-            t.push(tips[n])
+            const tail = tails.get(c)
+            if (tail) { let left = run[c], p = points[points.length - 1]; for (const q of tail) { left -= Math.hypot(q[0] - p[0], q[1] - p[1]); points.push(q); r.push(Math.max(0, left)); p = q } }
           }
           break
         }
-        n = kept[0]
+        c = next[0]
       }
-      chains.push(chain); chainTips.push(t)
+      lines.push({ points, run: r })
     }
   }
   walk(0)
-  return { chains, tips: chainTips, rootTips: tips[0] }
+  return { lines, longest: Math.max(1e-9, run[0]) }
 }
 
-// ---------- leaf with loops: closed venation ----------
+// ---------- leaf with loops: closed venation between the main veins ----------
 
-// Closed venation (Runions et al. 2005) with marginal growth: the leaf grows out from the start as a copy of
-// its outline, and sources (scattered inside, and spaced along the edge) switch on as that growing edge
-// passes them. Each source pulls on its relative neighbourhood of vein points (a point counts unless another
-// point is nearer both it and the source), so veins from several sides head for it, and once every one of
-// them has arrived they join there, closing a loop. Veins are as thick as the tips they feed on the growth
-// tree (the pipe model). Ends that stop inside the leaf are trimmed off, so every vein closes off a region.
-// The sources' spacing `a` is set from the loop count by LOOP_SOURCES.
-const LOOP_SOURCES = 2.2
-type VeinGraph = { x: number[]; y: number[]; edges: [number, number][]; tips: number[]; rootTips: number }
-function leafLoops(region: Region, base: Vec, count: number): VeinGraph {
-  const size = Math.max(regionWidth(region), regionHeight(region))
+// Loops grow between the main veins by closed venation (Runions et al. 2005): sources scattered between them pull on
+// their relative neighbourhood of vein points (a point counts unless another point is nearer both it and the source),
+// so veins from both sides head for a source, and once every one of them has arrived they join there, closing a loop.
+// Ends left inside the leaf are trimmed back. The sources' spacing `a` is set from the loop count by LOOP_SOURCES.
+// Loop sources per region asked for, measured so regions land near the Loops count (16 → 18–22, 30 → 29–43 over a
+// circle, a square and a wide sheet); and how much heading a growing loop vein keeps, so it curves into its join.
+const LOOP_SOURCES = 6.5, INERTIA = 0.5
+// Returns the loop veins, and where each one starts on a main vein (that vein's index and the distance along it).
+function loopVeins(region: Region, main: Line[], count: number, D: number): { chains: Vec[][]; attach: { line: number; at: number }[] } {
   const a = Math.sqrt(regionArea(region) / Math.max(1, count * LOOP_SOURCES))
-  const D = 0.45 * a, kill = 1.5 * D, reach = 4 * a
-  const x: number[] = [], y: number[] = [], parent: number[] = [], along: number[] = []
-  const loops: [number, number][] = []
-  // Vein points in a grid of source-spacing cells.
-  const cell = a, gx = region.x0 - size, gy = region.y0 - size
-  const grid = new Map<number, number[]>()
-  const keyOf = (i: number, j: number) => i * 65536 + j
-  const add = (px: number, py: number, p: number) => {
-    const n = x.length
-    x.push(px); y.push(py); parent.push(p); along.push(p < 0 ? 0 : along[p] + Math.hypot(px - x[p], py - y[p]))
-    const k = keyOf(Math.floor((px - gx) / cell), Math.floor((py - gy) / cell))
-    const list = grid.get(k)
-    if (list) list.push(n); else grid.set(k, [n])
-    return n
+  const kill = 1.5 * D, reach = 2.5 * a
+  const x: number[] = [], y: number[] = [], parent: number[] = [], line: number[] = [], index: number[] = [], along: number[] = []
+  const cell = a, grid = new Map<number, number[]>()
+  const keyOf = (i: number, j: number) => (i + 30000) * 60001 + (j + 30000)
+  const add = (px: number, py: number, p: number, l: number, k: number, s: number) => {
+    const id = x.length
+    x.push(px); y.push(py); parent.push(p); line.push(l); index.push(k); along.push(s)
+    const key = keyOf(Math.floor(px / cell), Math.floor(py / cell)), list = grid.get(key)
+    if (list) list.push(id); else grid.set(key, [id])
+    return id
   }
-  const within = (px: number, py: number, r: number, visit: (n: number, d: number) => boolean | void) => {
-    const i0 = Math.floor((px - r - gx) / cell), i1 = Math.floor((px + r - gx) / cell), j0 = Math.floor((py - r - gy) / cell), j1 = Math.floor((py + r - gy) / cell)
-    for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) for (const n of grid.get(keyOf(i, j)) ?? []) {
-      const d = Math.hypot(x[n] - px, y[n] - py)
-      if (d <= r && visit(n, d) === true) return
+  const within = (px: number, py: number, r: number, visit: (id: number, d: number) => boolean | void) => {
+    for (let i = Math.floor((px - r) / cell); i <= Math.floor((px + r) / cell); i++)
+      for (let j = Math.floor((py - r) / cell); j <= Math.floor((py + r) / cell); j++)
+        for (const id of grid.get(keyOf(i, j)) ?? []) { const d = Math.hypot(x[id] - px, y[id] - py); if (d <= r && visit(id, d) === true) return }
+  }
+  // The main veins, resampled every step, are where loops start; they're never trimmed.
+  main.forEach((l, li) => {
+    let carry = 0
+    add(l.points[0][0], l.points[0][1], -1, li, 0, 0)
+    for (let i = 1, k = 1; i < l.points.length; i++) {
+      const [p, q] = [l.points[i - 1], l.points[i]], seg = Math.hypot(q[0] - p[0], q[1] - p[1])
+      for (let t = D - carry; t < seg; t += D) add(p[0] + ((q[0] - p[0]) * t) / seg, p[1] + ((q[1] - p[1]) * t) / seg, -1, li, k++, 0)
+      carry = (carry + seg) % D
     }
-  }
-  // Two vein points joined through a source make a loop only if the veins between them are long enough to
-  // go round something; otherwise the join would close a sliver.
-  const pathLength = (u: number, v: number) => {
-    const seen = new Set<number>()
-    for (let n = u; n >= 0; n = parent[n]) seen.add(n)
-    let m = v
-    while (m >= 0 && !seen.has(m)) m = parent[m]
-    return m < 0 ? Infinity : along[u] + along[v] - 2 * along[m]
-  }
-  // Sources, each with the moment the growing edge reaches it: its distance from the start over the
-  // distance from the start to the far edge in its direction.
-  const rings = regionRings(region)
-  const reachOf = (px: number, py: number) => {
-    const dx = px - base[0], dy = py - base[1], L = Math.hypot(dx, dy)
-    if (L < 1e-9) return 0
-    const ux = dx / L, uy = dy / L
-    let far = L
-    for (const ring of rings) for (let i = 0; i < ring.length; i++) {
-      const [p, q] = [ring[i], ring[(i + 1) % ring.length]], ex = q[0] - p[0], ey = q[1] - p[1]
-      const den = ux * ey - uy * ex
-      if (Math.abs(den) < 1e-12) continue
-      const wx = p[0] - base[0], wy = p[1] - base[1], t = (wx * ey - wy * ex) / den, u = (wx * uy - wy * ux) / den
-      if (t > 0 && u >= 0 && u <= 1) far = Math.max(far, t)
-    }
-    return L / far
-  }
-  const sources: { x: number; y: number; at: number }[] = []
+  })
+  const mainCount = x.length
   const flat = { mode: 'none' as const, strength: 1, angle: 0, invert: false }
-  const darts = poissonDisk(region, a, 30, flat, createRng(4099 + count * 31))
-  for (let i = 0; i < darts.points.length; i += 2) sources.push({ x: darts.points[i], y: darts.points[i + 1], at: 0 })
-  for (const ring of rings) {
-    const L = ring.reduce((s, p, i) => s + Math.hypot(ring[(i + 1) % ring.length][0] - p[0], ring[(i + 1) % ring.length][1] - p[1]), 0)
-    const n = Math.max(3, Math.round(L / a))
-    let at = (L / n) / 2, s = 0
-    for (let i = 0; i < ring.length && at < L; i++) {
-      const p = ring[i], q = ring[(i + 1) % ring.length], e = Math.hypot(q[0] - p[0], q[1] - p[1])
-      while (at <= s + e && at < L) { const t = e > 0 ? (at - s) / e : 0; sources.push({ x: p[0] + (q[0] - p[0]) * t, y: p[1] + (q[1] - p[1]) * t, at: 0 }); at += L / n }
-      s += e
-    }
+  const darts = poissonDisk(region, a, 30, flat, createRng(4099 + count * 31)).points
+  const sx: number[] = [], sy: number[] = []
+  for (let i = 0; i < darts.length; i += 2) {
+    let clear = true
+    within(darts[i], darts[i + 1], 0.6 * a, () => { clear = false; return true })
+    if (clear) { sx.push(darts[i]); sy.push(darts[i + 1]) }
   }
-  // Edge sources too near a scattered one would leave slivers between them.
-  const kept = sources.filter((src, i) => i < darts.points.length / 2 || sources.slice(0, darts.points.length / 2).every(o => Math.hypot(o.x - src.x, o.y - src.y) > 0.5 * a))
-  for (const src of kept) src.at = Math.min(1, reachOf(src.x, src.y))
-  kept.sort((p, q) => p.at - q.at)
-  add(base[0], base[1], -1)
-  let live: number[] = [], next = 0, front = 0
-  const step = D / Math.max(1e-9, Math.max(...kept.map(src => Math.hypot(src.x - base[0], src.y - base[1]))))
+  // A loop joins veins grown from two different main veins: two from one main vein would close a bulb beside it.
+  const loops: [number, number][] = []
   const neighbourhood = (t: number) => {
     const near: { n: number; d: number }[] = []
-    within(kept[t].x, kept[t].y, reach, (n, d) => { near.push({ n, d }) })
+    within(sx[t], sy[t], reach, (n, d) => { near.push({ n, d }) })
     near.sort((p, q) => p.d - q.d)
     const rn: { n: number; d: number }[] = []
     for (let i = 0; i < near.length && i < 48; i++) {
@@ -394,22 +441,16 @@ function leafLoops(region: Region, base: Vec, count: number): VeinGraph {
   }
   const join = (t: number, arrived: { n: number; d: number }[]) => {
     if (!arrived.length) return
-    const j = add(kept[t].x, kept[t].y, arrived[0].n)
-    const joined = [arrived[0].n]
+    const first = arrived[0].n
+    const j = add(sx[t], sy[t], first, line[first], index[first], along[first] + arrived[0].d)
+    const joined = [first]
     for (const { n } of arrived.slice(1)) {
-      if (joined.some(m => pathLength(n, m) < 2 * a)) continue
+      if (joined.some(m => line[m] === line[n])) continue
       loops.push([n, j]); joined.push(n)
     }
   }
-  for (let iter = 0; iter < 5000 && x.length < 30000 && (next < kept.length || live.length); iter++) {
-    front += step
-    while (next < kept.length && kept[next].at <= front) {
-      // A source switching on next to a vein that's already there is spent: the vein feeds it.
-      let clear = true
-      within(kept[next].x, kept[next].y, 0.5 * a, () => { clear = false; return true })
-      if (clear) live.push(next)
-      next++
-    }
+  let live = sx.map((_, i) => i)
+  for (let iter = 0; iter < 3000 && x.length < 40000 && live.length; iter++) {
     const pull = new Map<number, Vec>()
     const still: number[] = []
     let joined = 0
@@ -421,7 +462,7 @@ function leafLoops(region: Region, base: Vec, count: number): VeinGraph {
       still.push(t)
       for (const v of waiting) {
         const p = pull.get(v.n) ?? [0, 0]
-        p[0] += (kept[t].x - x[v.n]) / v.d; p[1] += (kept[t].y - y[v.n]) / v.d
+        p[0] += (sx[t] - x[v.n]) / v.d; p[1] += (sy[t] - y[v.n]) / v.d
         pull.set(v.n, p)
       }
     }
@@ -430,78 +471,103 @@ function leafLoops(region: Region, base: Vec, count: number): VeinGraph {
     for (const [n, [vx, vy]] of pull) {
       const len = Math.hypot(vx, vy)
       if (len < 1e-9) continue
-      const px = x[n] + (vx / len) * D, py = y[n] + (vy / len) * D
+      // A growing loop vein keeps some of its heading (main veins start fresh), so loop veins curve into their joins.
+      let dx = vx / len, dy = vy / len
+      if (n >= mainCount && parent[n] >= 0) { const hx = x[n] - x[parent[n]], hy = y[n] - y[parent[n]], hl = Math.hypot(hx, hy) || 1; dx += (hx / hl) * INERTIA; dy += (hy / hl) * INERTIA }
+      const dl = Math.hypot(dx, dy) || 1
+      const px = x[n] + (dx / dl) * D, py = y[n] + (dy / dl) * D
       let crowded = !contains(region, px, py)
       if (!crowded) within(px, py, 0.5 * D, () => { crowded = true; return true })
-      if (!crowded) { add(px, py, n); grew++ }
+      if (!crowded) { add(px, py, n, line[n], index[n], along[n] + D); grew++ }
     }
-    if (!grew && !joined && next >= kept.length) {
+    if (!grew && !joined) {
       // Stuck: each source joins the veins that did arrive, and the rest are dropped.
       for (const t of live) join(t, neighbourhood(t).filter(v => v.d < kill))
       live = []
     }
   }
-  // The graph: growth edges and the joins that close loops.
-  const degree = new Array<number>(x.length).fill(0)
+  // The loop veins as a graph: growth edges from the main veins out, and the joins.
   const edges: [number, number][] = []
-  for (let n = 1; n < x.length; n++) edges.push([parent[n], n])
+  for (let n = mainCount; n < x.length; n++) edges.push([parent[n], n])
   edges.push(...loops)
+  const degree = new Array<number>(x.length).fill(0)
   for (const [u, v] of edges) { degree[u]++; degree[v]++ }
-  // Trim ends that stop inside the leaf, back to the junction they hang from, over and over.
-  const onEdge = (n: number) => !contains(region, x[n], y[n]) || rings.some(ring => ring.some((p, i) => {
-    const q = ring[(i + 1) % ring.length], ex = q[0] - p[0], ey = q[1] - p[1], L2 = ex * ex + ey * ey || 1
-    const t = Math.max(0, Math.min(1, ((x[n] - p[0]) * ex + (y[n] - p[1]) * ey) / L2))
-    return Math.hypot(x[n] - p[0] - t * ex, y[n] - p[1] - t * ey) < 1e-6 * size
-  }))
   const adj: number[][] = x.map(() => [])
   edges.forEach(([u, v], e) => { adj[u].push(e); adj[v].push(e) })
+  // Trim ends that stop inside the leaf, back to the vein they hang from, over and over.
   const gone = new Uint8Array(edges.length)
-  const ends = x.map((_, n) => n).filter(n => n > 0 && degree[n] === 1 && !onEdge(n))
+  const ends = [] as number[]
+  for (let n = mainCount; n < x.length; n++) if (degree[n] === 1) ends.push(n)
   while (ends.length) {
     const n = ends.pop()!
-    if (degree[n] !== 1) continue
+    if (degree[n] !== 1 || n < mainCount) continue
     const e = adj[n].find(f => !gone[f])
     if (e === undefined) continue
     gone[e] = 1
     const m = edges[e][0] === n ? edges[e][1] : edges[e][0]
     degree[n]--; degree[m]--
-    if (m > 0 && degree[m] === 1 && !onEdge(m)) ends.push(m)
+    if (m >= mainCount && degree[m] === 1) ends.push(m)
   }
-  const live2 = edges.filter((_, e) => !gone[e])
-  // Tips each point feeds on what's left of the growth tree (the pipe model). A point is only ever added after
-  // its parent, so going down the indices visits children before parents.
-  const children: number[][] = x.map(() => [])
-  for (let n = 1; n < x.length; n++) if (!gone[n - 1]) children[parent[n]].push(n) // edge n − 1 is parent[n] → n
-  const tips = new Array<number>(x.length).fill(1)
-  for (let n = x.length - 1; n >= 0; n--) tips[n] = children[n].length ? children[n].reduce((s, c) => s + tips[c], 0) : 1
-  return { x, y, edges: live2, tips, rootTips: tips[0] }
-}
-
-// A vein graph as polylines that run between its junctions and ends (and the start, point 0), so smoothing
-// keeps every join in place.
-function graphChains(g: VeinGraph): number[][] {
-  const adj: number[][] = g.x.map(() => [])
-  g.edges.forEach(([u, v], e) => { adj[u].push(e); adj[v].push(e) })
-  const used = new Uint8Array(g.edges.length), chains: number[][] = []
-  const other = (e: number, n: number) => (g.edges[e][0] === n ? g.edges[e][1] : g.edges[e][0])
+  // Polylines between joins and the main veins, so smoothing keeps every join in place.
+  const used = new Uint8Array(edges.length), chains: Vec[][] = [], attach: { line: number; at: number }[] = []
+  const other = (e: number, v: number) => (edges[e][0] === v ? edges[e][1] : edges[e][0])
+  const isEnd = (v: number) => v < mainCount || degree[v] !== 2
   const follow = (start: number, e: number) => {
-    const chain = [start]
-    let n = start
+    const chain: Vec[] = [[x[start], y[start]]]
+    let v = start
     for (;;) {
       used[e] = 1
-      n = other(e, n)
-      chain.push(n)
-      if (adj[n].length !== 2 || n === 0) break
-      const next = adj[n].find(f => !used[f])
+      v = other(e, v)
+      chain.push([x[v], y[v]])
+      if (isEnd(v)) break
+      const next = adj[v].find(f => !used[f] && !gone[f])
       if (next === undefined) break
       e = next
     }
+    if (chain.length < 2) return
     chains.push(chain)
+    for (const end of [start, v]) if (end < mainCount) attach.push({ line: line[end], at: index[end] * D })
   }
-  for (let n = 0; n < g.x.length; n++) if (adj[n].length !== 2 || n === 0) for (const e of adj[n]) if (!used[e]) follow(n, e)
-  // Loops with no junction on them at all.
-  for (let n = 0; n < g.x.length; n++) for (const e of adj[n]) if (!used[e]) follow(n, e)
-  return chains
+  for (let v = 0; v < x.length; v++) if (isEnd(v)) for (const e of adj[v]) if (!used[e] && !gone[e]) follow(v, e)
+  for (let v = 0; v < x.length; v++) for (const e of adj[v]) if (!used[e] && !gone[e]) follow(v, e)
+  return { chains, attach }
+}
+
+// A vein made smooth: a few passes of averaging each point with its neighbours (taking out the step-to-step jitter),
+// then Chaikin's corner cutting. Both ends stay where they are, so joins stay joined.
+function relaxLine(points: Vec[], passes = 4): Vec[] {
+  let p = points
+  for (let k = 0; k < passes && p.length > 2; k++) p = p.map((q, i) => (i === 0 || i === p.length - 1 ? q : [(p[i - 1][0] + 2 * q[0] + p[i + 1][0]) / 4, (p[i - 1][1] + 2 * q[1] + p[i + 1][1]) / 4]))
+  return smooth(p)
+}
+// Points put into a polyline at distances along it (with values interpolated), and their indices, to keep them.
+function insertAlong(points: Vec[], values: number[], at: number[]): { points: Vec[]; values: number[]; fixed: number[] } {
+  const out: Vec[] = [points[0]], vals: number[] = [values[0]], fixed: number[] = []
+  const want = [...at].sort((p, q) => p - q)
+  let s = 0, k = 0
+  for (let i = 1; i < points.length; i++) {
+    const [p, q] = [points[i - 1], points[i]], seg = Math.hypot(q[0] - p[0], q[1] - p[1])
+    while (k < want.length && want[k] <= s + seg) {
+      const t = seg > 0 ? Math.max(0, Math.min(1, (want[k] - s) / seg)) : 0
+      out.push([p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t]); vals.push(values[i - 1] + (values[i] - values[i - 1]) * t); fixed.push(out.length - 1)
+      k++
+    }
+    out.push(q); vals.push(values[i]); s += seg
+  }
+  return { points: out, values: vals, fixed }
+}
+// Values given at a polyline's points, carried over to a smoothed copy of it by the fraction of the way along.
+function resampleOnto(points: Vec[], values: number[], onto: Vec[]): number[] {
+  const s = [0]; for (let i = 1; i < points.length; i++) s.push(s[i - 1] + Math.hypot(points[i][0] - points[i - 1][0], points[i][1] - points[i - 1][1]))
+  const t = [0]; for (let i = 1; i < onto.length; i++) t.push(t[i - 1] + Math.hypot(onto[i][0] - onto[i - 1][0], onto[i][1] - onto[i - 1][1]))
+  const S = s[s.length - 1] || 1, T = t[t.length - 1] || 1
+  let j = 1
+  return t.map(u => {
+    const at = (u / T) * S
+    while (j < s.length - 1 && s[j] < at) j++
+    const f = s[j] > s[j - 1] ? (at - s[j - 1]) / (s[j] - s[j - 1]) : 0
+    return values[j - 1] + (values[j] - values[j - 1]) * Math.max(0, Math.min(1, f))
+  })
 }
 
 // Chaikin smoothing that keeps both ends.
@@ -555,28 +621,22 @@ export function makeVeins(region: Region, v: VeinSettings): Vein[] {
   }
   const base = veinBase(region, v.start)
   const count = Math.max(1, Math.round(v.count))
-  if (v.style === 'leaf' && v.loops) {
-    const g = leafLoops(region, base, count)
-    return graphChains(g).map(chain => {
-      const pts = smooth(chain.map((n): Vec => [g.x[n], g.y[n]]))
-      const widths = pts.map((_, i) => {
-        const t = g.tips[chain[Math.min(chain.length - 1, Math.round((i / Math.max(1, pts.length - 1)) * (chain.length - 1)))]]
-        return v.width * Math.max(1 - taper, Math.sqrt(t / Math.max(1, g.rootTips)))
-      })
-      return simplify(pts, widths, tol)
-    })
-  }
   if (v.style === 'leaf') {
-    const { chains, tips, rootTips } = leafVeins(region, base, count)
-    return chains.map((chain, c) => {
-      const pts = smooth(chain)
-      // Each original point's tip count, spread over the smoothed points.
-      const widths = pts.map((_, i) => {
-        const t = tips[c][Math.min(tips[c].length - 1, Math.round((i / Math.max(1, pts.length - 1)) * (tips[c].length - 1)))]
-        return v.width * Math.max(1 - taper, Math.sqrt(t / Math.max(1, rootTips)))
-      })
-      return simplify(pts, widths, tol)
+    // Main veins, smoothed and tapering along their length; with loops (fewer main veins: a third of the loops, plus
+    // two), thinner veins grown between the smoothed main veins, each join a point kept in the main vein it meets.
+    const tree = growTree(region, base)
+    const { lines, longest } = mainVeins(region, tree, v.loops ? Math.min(14, Math.max(3, Math.round(count / 3) + 2)) : count)
+    const smoothed: Line[] = lines.map(l => { const pts = relaxLine(l.points); return { points: pts, run: resampleOnto(l.points, l.run, pts) } })
+    const width = (r: number) => v.width * ((1 - taper) + taper * (r / longest))
+    if (!v.loops) return smoothed.map(l => simplify(l.points, l.run.map(width), tol))
+    const { chains, attach } = loopVeins(region, smoothed, count, tree.D)
+    const veins = smoothed.map((l, i) => {
+      const { points, values, fixed } = insertAlong(l.points, l.run, attach.filter(a => a.line === i).map(a => a.at))
+      return simplify(points, values.map(width), tol, fixed)
     })
+    const fine = v.width * Math.max(0.15, (1 - taper) * 0.75)
+    for (const chain of chains) { const pts = relaxLine(chain, 12); veins.push(simplify(pts, pts.map(() => fine), tol)) }
+    return veins
   }
   // Wing: distance along the veins from the base sets each point's width.
   const traced = wingVeins(region, base, count, v.start === 'centre')

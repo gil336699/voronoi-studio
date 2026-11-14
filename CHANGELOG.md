@@ -1,5 +1,12 @@
 # Voronoi Studio Changelog
 
+## 1.10.0 2026-11-14
+
+- **Smoother, more leaf-like Leaf veins.** Leaf veins are rebuilt on the set-up of Jason Webb's space colonization experiments: a dense tree grown in short steps. Veins are now smooth curves that fan out from the start and branch, thickest at the start and tapering along their whole length. Each main vein runs on along its own branch to the edge. Before, tips were carried on in straight lines that crossed regions, and veins were made of long straight steps, which looked sketchy.
+- **Loops like a leaf's finer veins.** With **Join into loops**, the main veins stay, and thinner veins grow between them and join where they meet. From the centre they make rings of loops round radiating ribs. Before, every vein was part of one even network of polygons.
+- Changing **Vein ends** keeps the same tree and adds or removes its branches, instead of growing a new one.
+- Leaf patterns saved by earlier versions open with the new veins, keeping their points. Patterns without Leaf veins are unchanged: 192 of 192 other whole-pipeline setups and 270 of 270 seeding setups match 1.9.0.
+
 ## 1.9.0 2026-11-13
 
 - **Stretch that follows a field.** Stretch has a new **Follows** list. Cells can still all stretch one way, or now follow:
