@@ -62,7 +62,7 @@ const stretchFields = (s: Settings): Option<FieldKind>[] => [
   { value: 'cells', label: 'Swirl grid', tip: 'A grid of swirls, each turning the other way from its neighbours, like convection cells.' },
   { value: 'noise', label: 'Noise', tip: 'Directions wander smoothly across the sheet, like a flow field.' },
   { value: 'curl', label: 'Swirling noise', tip: 'Smooth noise turned into eddies that wrap round each other, like smoke or marbling.' },
-  { value: 'veins', label: 'Along the veins', tip: 'Cells line up with the nearest vein.', unavailable: s.veins === 'none' && 'turn on veins first' },
+  { value: 'veins', label: 'Along the veins', tip: 'Cells flow along the veins, turning smoothly from one vein to the next.', unavailable: s.veins === 'none' && 'turn on veins first' },
   { value: 'picture', label: 'Along the picture', tip: 'Cells run along the density picture’s contours, where dark meets light.', unavailable: !s.densityPicture && 'choose a picture first' },
 ]
 const FIELD_HINT: Record<Exclude<FieldKind, 'fixed'>, string> = {
@@ -72,7 +72,7 @@ const FIELD_HINT: Record<Exclude<FieldKind, 'fixed'>, string> = {
   cells: 'Neighbouring swirls turn opposite ways, and cells between them run straight.',
   noise: 'Directions wander smoothly; higher Detail turns more often. Cells too big to follow a turn stay round, so finer detail needs more cells.',
   curl: 'Eddies wrap round each other; higher Detail makes them smaller. Cells too big to follow an eddy stay round, so finer detail needs more cells.',
-  veins: 'Cells near a vein run along it.',
+  veins: 'Cells run along every vein and turn smoothly from one vein to the next.',
   picture: 'The picture is placed as under Density. Cells in flat areas stay round.',
 }
 const size = (w: number, h: number) => `${w.toLocaleString()} × ${h.toLocaleString()} px`

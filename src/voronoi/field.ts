@@ -26,7 +26,7 @@ export type FieldKind = 'fixed' | 'centre' | 'saddle' | 'wave' | 'cells' | 'nois
 // amount: how many times longer than wide (1 is off). angle: degrees, the overall direction (One direction, Saddle,
 // Wave). centre: 0–1 of the sheet (Around a centre, Saddle). turn: degrees, 0 rays out of the centre to 90 rings round it. waves: full
 // waves across the sheet. swing: degrees the waves turn. cells: swirling cells across. scale: noise features
-// across. seed: for noise. veins / tones: the pattern's veins and the density picture, for those two kinds.
+// across. seed: for noise. veins / tones: the veins' centre lines and the density picture, for those two kinds.
 export type FieldSpec = {
   kind: FieldKind; amount: number; angle: number
   centre: [number, number]; turn: number; waves: number; swing: number; cells: number; scale: number; seed: number
@@ -84,35 +84,90 @@ function rawField(f: FieldSpec, x: number, y: number): Vec {
   return [v[0], -v[1]]
 }
 
-// Along the veins: the direction of the nearest edge of the veins' outline, through a grid of its edges.
-function veinDirections(veins: Polygon[], nodes: Vec[], step: number): Vec[] {
-  const segs: [Vec, Vec][] = []
-  for (const ring of veins) for (let i = 0; i < ring.length; i++) segs.push([ring[i], ring[(i + 1) % ring.length]])
-  if (!segs.length) return nodes.map(() => [0, 0])
-  const cell = Math.max(step * 4, 1e-6), grid = new Map<string, number[]>()
-  const key = (x: number, y: number) => `${Math.floor(x / cell)},${Math.floor(y / cell)}`
-  segs.forEach(([a, b], i) => {
-    const n = Math.max(1, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / cell))
-    const seen = new Set<string>()
-    for (let k = 0; k <= n; k++) { const t = k / n, kk = key(a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t); if (!seen.has(kk)) { seen.add(kk); const l = grid.get(kk) ?? []; l.push(i); grid.set(kk, l) } }
-  })
-  return nodes.map(([x, y]) => {
-    const cx = Math.floor(x / cell), cy = Math.floor(y / cell)
-    for (let r = 0; r < 64; r++) {
-      let best = -1, bd = Infinity
-      for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
-        if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue
-        for (const i of grid.get(`${cx + dx},${cy + dy}`) ?? []) {
-          const [a, b] = segs[i], ex = b[0] - a[0], ey = b[1] - a[1], L = ex * ex + ey * ey || 1
-          const t = Math.max(0, Math.min(1, ((x - a[0]) * ex + (y - a[1]) * ey) / L))
-          const d = Math.hypot(x - a[0] - t * ex, y - a[1] - t * ey)
-          if (d < bd) { bd = d; best = i }
-        }
-      }
-      if (best >= 0 && bd <= r * cell) { const [a, b] = segs[best]; return [b[0] - a[0], b[1] - a[1]] }
+// Along the veins: a direction everywhere, from the veins' centre lines. Directions are held as (cos 2θ, sin 2θ),
+// so a line and its reverse count alike. They're fixed at the grid nodes on a vein, and every other node takes the
+// average of its four neighbours (Laplace's equation, by over-relaxation from the nearest vein's direction): the
+// smoothest field that runs along every vein, the way wood grain bends smoothly between knots. Between two veins it
+// turns gradually from one to the other, and inside a loop it turns round with the loop. Then unitSweeps sweeps
+// keep every direction full length (each node the direction of its neighbours' sum), so where veins meet at a
+// steep angle the field turns gradually instead of cancelling out along a line, and cells stay round only in a
+// small patch at the corner. The field runs on past the sheet's edge, as the other fields do, so the edge itself
+// doesn't bend it.
+// Before 1.11.0 each place took the nearest vein's direction, which jumps where two veins are equally near: with
+// 8 and 20 Leaf loops, 60 % and 42 % of the sheet got half the stretch or more. Laplace alone gives 82 % and 71 %,
+// with the full-length sweeps 89 % and 80 % (more sweeps change that by under a point). Measured, with the eye
+// gate's reach (see WIDE), in local/vein-field; probes may change these (the grid cache only keys on `wide`).
+export const VEIN_SOLVE = { omega: 1.9, tolerance: 1e-4, maxSweeps: 2000, unitSweeps: 50, wide: 1.5 }
+function veinField(lines: Polygon[], x0: number, y0: number, step: number, nx: number, ny: number): Vec[] {
+  const N = nx * ny, U = new Float32Array(N), V = new Float32Array(N), fixed = new Uint8Array(N), near = new Float32Array(N).fill(Infinity)
+  // A node is on a vein within 0.75 of a grid step of its centre line, so every vein marks an unbroken run of nodes;
+  // where two veins meet, it takes the nearer one's direction.
+  const r = 0.75 * step
+  for (const line of lines) for (let k = 0; k + 1 < line.length; k++) {
+    const [ax, ay] = line[k], [bx, by] = line[k + 1], ex = bx - ax, ey = by - ay, L2 = ex * ex + ey * ey
+    if (L2 < 1e-18) continue
+    const twice = 2 * Math.atan2(ey, ex), cu = Math.cos(twice), sv = Math.sin(twice)
+    const i0 = Math.max(0, Math.floor((Math.min(ax, bx) - r - x0) / step)), i1 = Math.min(nx - 1, Math.ceil((Math.max(ax, bx) + r - x0) / step))
+    const j0 = Math.max(0, Math.floor((Math.min(ay, by) - r - y0) / step)), j1 = Math.min(ny - 1, Math.ceil((Math.max(ay, by) + r - y0) / step))
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+      const px = x0 + i * step - ax, py = y0 + j * step - ay
+      const t = Math.max(0, Math.min(1, (px * ex + py * ey) / L2)), qx = px - t * ex, qy = py - t * ey, d = Math.sqrt(qx * qx + qy * qy), id = j * nx + i
+      if (d <= r && d < near[id]) { near[id] = d; U[id] = cu; V[id] = sv; fixed[id] = 1 }
     }
-    return [0, 0]
-  })
+  }
+  // Start every other node from its nearest vein node, breadth first over the grid.
+  const queue = new Int32Array(N), seen = Uint8Array.from(fixed)
+  let head = 0, tail = 0
+  for (let id = 0; id < N; id++) if (fixed[id]) queue[tail++] = id
+  if (!tail) return new Array(N).fill([0, 0])
+  while (head < tail) {
+    const id = queue[head++], i = id % nx
+    for (const n of [i > 0 ? id - 1 : -1, i < nx - 1 ? id + 1 : -1, id >= nx ? id - nx : -1, id + nx < N ? id + nx : -1]) {
+      if (n < 0 || seen[n]) continue
+      seen[n] = 1; U[n] = U[id]; V[n] = V[id]; queue[tail++] = n
+    }
+  }
+  // Over-relaxation, until no node moves by more than the tolerance in a sweep. At the grid's edge a node averages
+  // the neighbours it has, so the field meets the edge freely.
+  const { omega, tolerance, maxSweeps } = VEIN_SOLVE
+  for (let sweep = 0; sweep < maxSweeps; sweep++) {
+    let worst = 0
+    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+      const id = j * nx + i
+      if (fixed[id]) continue
+      let su = 0, sv = 0, n = 0
+      if (i > 0) { su += U[id - 1]; sv += V[id - 1]; n++ }
+      if (i < nx - 1) { su += U[id + 1]; sv += V[id + 1]; n++ }
+      if (j > 0) { su += U[id - nx]; sv += V[id - nx]; n++ }
+      if (j < ny - 1) { su += U[id + nx]; sv += V[id + nx]; n++ }
+      const du = su / n - U[id], dv = sv / n - V[id]
+      U[id] += omega * du; V[id] += omega * dv
+      const moved = Math.abs(du) + Math.abs(dv)
+      if (moved > worst) worst = moved
+    }
+    if (worst < tolerance) break
+  }
+  // Then the full-length sweeps.
+  for (let sweep = 0; sweep < VEIN_SOLVE.unitSweeps; sweep++) {
+    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+      const id = j * nx + i
+      if (fixed[id]) continue
+      let su = 0, sv = 0
+      if (i > 0) { su += U[id - 1]; sv += V[id - 1] }
+      if (i < nx - 1) { su += U[id + 1]; sv += V[id + 1] }
+      if (j > 0) { su += U[id - nx]; sv += V[id - nx] }
+      if (j < ny - 1) { su += U[id + nx]; sv += V[id + nx] }
+      const len = Math.sqrt(su * su + sv * sv)
+      if (len > 1e-9) { U[id] = su / len; V[id] = sv / len }
+    }
+  }
+  const out: Vec[] = new Array(N)
+  for (let id = 0; id < N; id++) {
+    if (U[id] * U[id] + V[id] * V[id] < 1e-18) { out[id] = [0, 0]; continue }
+    const t = Math.atan2(V[id], U[id]) / 2
+    out[id] = [Math.cos(t), Math.sin(t)]
+  }
+  return out
 }
 
 // Along the picture: the contour direction, across its gradient (dark meets light), strength from the gradient.
@@ -131,7 +186,10 @@ function pictureDirection(t: PictureTones, x: number, y: number): Vec {
 // How the field is read, in cell spacings. NEAR: the direction cells follow, short so waves and swirls a few
 // cells across still show. WIDE: the eye gate, which fades the stretch where directions over this wider patch
 // go most of the way round (coherence under GATE[0], full stretch above GATE[1]), as at a vortex's eye or a
-// saddle. Without it points creep into eyes over long relaxing; measured in local/qa/field-reach2.ts.
+// saddle. Without it points creep into eyes over long relaxing; measured in local/qa/field-reach2.ts. Along the
+// veins uses 1.5 (VEIN_SOLVE.wide): its field turns right round only at vein corners and in small loops, and with
+// 1.5 relaxed cells came out more even (area spread 0.21–0.23 against 0.21–0.26 with 2.5, after 300–1,000 steps)
+// while 80–89 % of a sheet with Leaf loops follows instead of 70–81 %.
 const NEAR = 1, WIDE = 2.5, GATE = [0.25, 0.75] as const
 // Bends in each wall for relaxing. One left points 30 % denser near a vortex's eye than 55–85 mm out after
 // 2,000 steps (1,200 cells at 3×), two 12 %, three 6 %, for 11, 15 and 18 ms a step; straight walls 3.6 times.
@@ -143,7 +201,8 @@ export function metricGrid(f: FieldSpec, region: Region, spacing: number): Metri
   const step = Math.max(w, h) / (N - 1)
   // The readings' reach in grid steps. Keyed on them rather than the spacing, so erasing or adding a few points,
   // and seeding and relaxing the same count, share one grid.
-  const near = Math.max(1, Math.round((NEAR * spacing) / step)), wide = Math.max(1, Math.round((WIDE * spacing) / step))
+  const reach = f.kind === 'veins' ? VEIN_SOLVE.wide : WIDE
+  const near = Math.max(1, Math.round((NEAR * spacing) / step)), wide = Math.max(1, Math.round((reach * spacing) / step))
   const key = JSON.stringify([f.kind, f.amount, f.angle, f.centre, f.turn, f.waves, f.swing, f.cells, f.scale, f.seed, f.sheet,
     region.x0, region.y0, region.x1, region.y1, near, wide])
   const hit = metricCache.find(m => m.key === key && m.veins === f.veins && m.tones === f.tones && m.rings === region.rings)
@@ -152,7 +211,7 @@ export function metricGrid(f: FieldSpec, region: Region, spacing: number): Metri
   const x0 = region.x0 - step, y0 = region.y0 - step
   const nodes: Vec[] = []
   for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) nodes.push([x0 + i * step, y0 + j * step])
-  const raw: Vec[] = f.kind === 'veins' ? veinDirections(f.veins ?? [], nodes, step)
+  const raw: Vec[] = f.kind === 'veins' ? veinField(f.veins ?? [], x0, y0, step, nx, ny)
     : f.kind === 'picture' ? nodes.map(([x, y]) => (f.tones ? pictureDirection(f.tones, x, y) : [0, 0]))
       : nodes.map(([x, y]) => rawField(f, x, y))
   // Structure tensor (unit directions; the picture's weighted by gradient strength) and strength, each box
@@ -294,7 +353,7 @@ export type FieldDiagram = { cells: Cells; internal: Segment[]; delaunay: Segmen
 // Cells, inner edges and Delaunay lines for points in one region (no veins splitting it), with the metric.
 // clipSegment: how to cut a segment to the region (the caller's, so ellipses and shapes match the rest of the app).
 // bends: points added in each wall where it really runs (RELAX_BENDS). For drawing (draw), a wall keeps its
-// bends only where one moves it by more than 6 % of its length, as near where the nearest vein changes;
+// bends only where one moves it by more than 6 % of its length, as where veins meet at a steep angle;
 // elsewhere walls stay straight. Holes cut files grow by a third at most instead of tripling (rings, 1,200
 // cells), and no drawn cell differs from the one relaxing uses by more than 15 % instead of 57 % (veins).
 export function fieldDiagram(points: Float64Array, region: Region, g: MetricGrid, clipSegment: (s: Segment) => Segment[], bends = 0, draw = false): FieldDiagram {

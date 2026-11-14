@@ -148,6 +148,29 @@ describe('stretch that follows a field', { timeout: 30_000 }, () => {
     }
   })
 
+  it('follows the veins over the whole sheet, turning smoothly from one vein to the next', () => {
+    // Two straight veins in a V, 20° each side of the middle line. Along each vein the field runs with it, and
+    // halfway between them it runs along the middle line, fully stretched. (1.10.1 took the nearer vein's
+    // direction, so the two met at the middle line and the stretch there fell to 2.1–2.2×.)
+    const slope = Math.tan((20 * Math.PI) / 180)
+    const v: Settings = { ...base, stretchField: 'veins', veins: 'imported', veinLines: { name: 'v.svg', lines: [[0, 0.5, 1, 0.5 - slope], [0, 0.5, 1, 0.5 + slope]] } }
+    for (const x of [80, 110, 140, 170]) {
+      const mid = fieldAt(v, 600, x, 100), on = fieldAt(v, 600, x, 100 - slope * x)
+      expect(turnBetween(mid.long, 0), `middle at ${x} mm`).toBeLessThan(2)
+      expect(mid.stretch, `middle at ${x} mm`).toBeGreaterThan(2.8)
+      expect(turnBetween(on.long, -Math.atan(slope)), `on the vein at ${x} mm`).toBeLessThan(3)
+    }
+    // Leaf veins joined into loops: most of the sheet gets at least half the stretch, all but small patches where
+    // veins meet at a steep angle (1.10.1: 60 % and 42 %).
+    const loops: Settings = { ...base, count: 1200, stretchField: 'veins', veins: 'leaf', veinLoops: true, veinCount: 8 }
+    expect(fieldShare(loops, 1200)).toBeGreaterThan(0.86)
+    expect(fieldShare({ ...loops, shape: 'ellipse', count: 1800, veinCount: 20, veinStart: 'centre', veinWidth: 2.5 }, 1800)).toBeGreaterThan(0.76)
+    // And the relaxed cells are long there: at least twice as long as wide (1.10.1: 63 %).
+    const { geometry: g } = make(loops, 20)
+    const whole = g.cells.filter(c => c && c.length === 1).map(c => shapeOf(c![0]).aspect)
+    expect(whole.filter(a => a >= 2).length / whole.length).toBeGreaterThan(0.82)
+  })
+
   it('draws walls bent where the field turns sharply, so drawn cells match the ones relaxing uses', () => {
     const s = { ...base, stretchField: 'veins' as const, veins: 'wing' as const, veinCount: 10 }
     const { points, geometry: g } = make(s, 20)

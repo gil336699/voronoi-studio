@@ -155,7 +155,7 @@ let lastStretch: { key: string; veins: unknown; tones: unknown; value: Stretch }
 export function stretchOf(s: Settings): Stretch | null {
   if (!(s.stretch > 1)) return null
   const kind = s.stretchField, ready = fieldReady(s)
-  const veins = ready && kind === 'veins' ? patternRegion(s).veins ?? null : null
+  const veins = ready && kind === 'veins' ? patternRegion(s).lines ?? null : null
   const pic = ready && kind === 'picture' ? pictureSettingsOf(s) : null
   const tones = pic ? pictureTones(pic) : null
   const key = JSON.stringify(ready ? [kind, s.stretch, s.stretchAngle, s.stretchCentreX, s.stretchCentreY, s.stretchTurn, s.stretchWaves,

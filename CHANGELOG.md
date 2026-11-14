@@ -1,5 +1,11 @@
 # Voronoi Studio Changelog
 
+## 1.11.0 2026-11-14
+
+- **Along the veins reaches the whole sheet.** Cells now run along every vein and turn smoothly from one vein to the next, the way wood grain bends between knots, so they follow the veins right across each region, not just beside them. Only patches where veins meet at a steep angle stay round, since a cell there can't line up with both. Before, each place took the direction of the nearest vein, which jumped where two veins were equally near, so between veins and inside Leaf loops cells stayed round. With eight Leaf loops and 1,200 cells, 60 % of the sheet followed the veins; now 89 %, and 89 % of the relaxed cells are at least twice as long as wide (was 64 %). With Wing or open Leaf veins it's 99–100 % (was 91–98 %).
+- Designs saved with **Along the veins** open with the new field and keep their points. Every other pattern is unchanged: 264 of 264 whole-pipeline setups that don't follow veins, 288 of 288 without a field and 270 of 270 seeding setups match 1.10.1.
+- The repository no longer holds the stray `node_modules` link that 1.10.1 added by mistake.
+
 ## 1.10.1 2026-11-14
 
 - **Centre X and Centre Y share their row evenly.** When Stretch follows **Around a centre** or **Saddle**, the two centre sliders now take half the row each, with each label on one line. Before, Centre X was squeezed into a narrow column and its label wrapped onto two lines.
