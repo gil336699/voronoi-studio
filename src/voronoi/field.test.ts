@@ -72,7 +72,8 @@ function fieldAt(s: Settings, count: number, x: number, y: number) {
 }
 const turnBetween = (p: number, q: number) => { let d = Math.abs(p - q) % Math.PI; if (d > Math.PI / 2) d = Math.PI - d; return (d * 180) / Math.PI }
 
-describe('stretch that follows a field', () => {
+// Several of these relax 1,200 cells for hundreds of steps, which takes 3–6 s on CI runners.
+describe('stretch that follows a field', { timeout: 30_000 }, () => {
   it('tiles the sheet exactly with cells that never cross themselves and hold their own points, for every field', () => {
     for (const [name, patch] of FIELDS) {
       const s = { ...base, ...patch }
