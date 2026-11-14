@@ -104,7 +104,8 @@ export function useDesign(initial: () => { doc: Doc; saved: boolean }, onStatus:
     autoIdle.current = false
     const id = ++autoLoop.current
     const begin = docRef.current
-    // Settled once no point moves more than a 2,000th of the typical spacing in a step.
+    // Settled once no point moves more than a 2,000th of the typical spacing in a step (with a field stretch,
+    // 99 % of points less than a 100th: see lloydStep).
     const tolerance = typicalSpacing(patternRegion(begin.settings), begin.points.length / 2) / 2000
     let steps = 0
     const loop = () => {
@@ -121,7 +122,7 @@ export function useDesign(initial: () => { doc: Doc; saved: boolean }, onStatus:
         if (!points) { window.setTimeout(loop, 0); return }
         steps++
         apply({ ...docRef.current, points }, false)
-        const done = result.maxMove < tolerance ? 'Settled after' : steps >= AUTO_MAX_STEPS ? 'Paused after' : ''
+        const done = (result.settleMove ?? result.maxMove) < tolerance ? 'Settled after' : steps >= AUTO_MAX_STEPS ? 'Paused after' : ''
         // Short enough for the status line at 1280 px. The button stays pressed, and the status then ends
         // "· Auto-relax on", to show it's still on. Quiet: these never replace a warning.
         if (done) { autoIdle.current = true; status.current({ text: `${done} ${steps.toLocaleString()} ${steps === 1 ? 'step' : 'steps'}`, quiet: true }); return }

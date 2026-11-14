@@ -6,6 +6,7 @@
 //   comes close to one already drawn joins it, so veins run side by side, never cross, and branch.
 // - Leaf: space colonization (Runions et al. 2005). Veins grow from the start toward scattered target points,
 //   which vanish once reached; the branches that feed the most tips are kept, as thick as the tips they feed.
+//   With loops (closed venation), veins from several sides head for each target and join there.
 // - Imported: open lines from an SVG.
 // Veins are as wide as Vein width at their start, narrowing by Taper toward their ends.
 import { differenceD, EndType, FillRule, inflatePathsD, intersectD, JoinType, simplifyPathsD, unionD, type PathD, type PathsD } from 'clipper2-ts'
@@ -18,7 +19,8 @@ import { boxOf, groupRings } from './shape'
 export type VeinStyle = 'none' | 'wing' | 'leaf' | 'imported'
 export type VeinStart = 'left' | 'right' | 'top' | 'bottom' | 'centre'
 // width: mm at the start. taper: 0–0.9, how much narrower the far ends are. lines: imported veins, sheet mm.
-export type VeinSettings = { style: VeinStyle; count: number; start: VeinStart; width: number; taper: number; lines: Polygon[] | null }
+// loops: Leaf veins join into loops (closed venation) instead of ending at the edge.
+export type VeinSettings = { style: VeinStyle; count: number; start: VeinStart; width: number; taper: number; lines: Polygon[] | null; loops?: boolean }
 // A vein: a polyline with a width at each point, from its start outward.
 export type Vein = { points: Vec[]; widths: number[] }
 
@@ -294,6 +296,214 @@ function leafVeins(region: Region, base: Vec, count: number): { chains: Vec[][];
   return { chains, tips: chainTips, rootTips: tips[0] }
 }
 
+// ---------- leaf with loops: closed venation ----------
+
+// Closed venation (Runions et al. 2005) with marginal growth: the leaf grows out from the start as a copy of
+// its outline, and sources (scattered inside, and spaced along the edge) switch on as that growing edge
+// passes them. Each source pulls on its relative neighbourhood of vein points (a point counts unless another
+// point is nearer both it and the source), so veins from several sides head for it, and once every one of
+// them has arrived they join there, closing a loop. Veins are as thick as the tips they feed on the growth
+// tree (the pipe model). Ends that stop inside the leaf are trimmed off, so every vein closes off a region.
+// The sources' spacing `a` is set from the loop count by LOOP_SOURCES.
+const LOOP_SOURCES = 2.2
+type VeinGraph = { x: number[]; y: number[]; edges: [number, number][]; tips: number[]; rootTips: number }
+function leafLoops(region: Region, base: Vec, count: number): VeinGraph {
+  const size = Math.max(regionWidth(region), regionHeight(region))
+  const a = Math.sqrt(regionArea(region) / Math.max(1, count * LOOP_SOURCES))
+  const D = 0.45 * a, kill = 1.5 * D, reach = 4 * a
+  const x: number[] = [], y: number[] = [], parent: number[] = [], along: number[] = []
+  const loops: [number, number][] = []
+  // Vein points in a grid of source-spacing cells.
+  const cell = a, gx = region.x0 - size, gy = region.y0 - size
+  const grid = new Map<number, number[]>()
+  const keyOf = (i: number, j: number) => i * 65536 + j
+  const add = (px: number, py: number, p: number) => {
+    const n = x.length
+    x.push(px); y.push(py); parent.push(p); along.push(p < 0 ? 0 : along[p] + Math.hypot(px - x[p], py - y[p]))
+    const k = keyOf(Math.floor((px - gx) / cell), Math.floor((py - gy) / cell))
+    const list = grid.get(k)
+    if (list) list.push(n); else grid.set(k, [n])
+    return n
+  }
+  const within = (px: number, py: number, r: number, visit: (n: number, d: number) => boolean | void) => {
+    const i0 = Math.floor((px - r - gx) / cell), i1 = Math.floor((px + r - gx) / cell), j0 = Math.floor((py - r - gy) / cell), j1 = Math.floor((py + r - gy) / cell)
+    for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) for (const n of grid.get(keyOf(i, j)) ?? []) {
+      const d = Math.hypot(x[n] - px, y[n] - py)
+      if (d <= r && visit(n, d) === true) return
+    }
+  }
+  // Two vein points joined through a source make a loop only if the veins between them are long enough to
+  // go round something; otherwise the join would close a sliver.
+  const pathLength = (u: number, v: number) => {
+    const seen = new Set<number>()
+    for (let n = u; n >= 0; n = parent[n]) seen.add(n)
+    let m = v
+    while (m >= 0 && !seen.has(m)) m = parent[m]
+    return m < 0 ? Infinity : along[u] + along[v] - 2 * along[m]
+  }
+  // Sources, each with the moment the growing edge reaches it: its distance from the start over the
+  // distance from the start to the far edge in its direction.
+  const rings = regionRings(region)
+  const reachOf = (px: number, py: number) => {
+    const dx = px - base[0], dy = py - base[1], L = Math.hypot(dx, dy)
+    if (L < 1e-9) return 0
+    const ux = dx / L, uy = dy / L
+    let far = L
+    for (const ring of rings) for (let i = 0; i < ring.length; i++) {
+      const [p, q] = [ring[i], ring[(i + 1) % ring.length]], ex = q[0] - p[0], ey = q[1] - p[1]
+      const den = ux * ey - uy * ex
+      if (Math.abs(den) < 1e-12) continue
+      const wx = p[0] - base[0], wy = p[1] - base[1], t = (wx * ey - wy * ex) / den, u = (wx * uy - wy * ux) / den
+      if (t > 0 && u >= 0 && u <= 1) far = Math.max(far, t)
+    }
+    return L / far
+  }
+  const sources: { x: number; y: number; at: number }[] = []
+  const flat = { mode: 'none' as const, strength: 1, angle: 0, invert: false }
+  const darts = poissonDisk(region, a, 30, flat, createRng(4099 + count * 31))
+  for (let i = 0; i < darts.points.length; i += 2) sources.push({ x: darts.points[i], y: darts.points[i + 1], at: 0 })
+  for (const ring of rings) {
+    const L = ring.reduce((s, p, i) => s + Math.hypot(ring[(i + 1) % ring.length][0] - p[0], ring[(i + 1) % ring.length][1] - p[1]), 0)
+    const n = Math.max(3, Math.round(L / a))
+    let at = (L / n) / 2, s = 0
+    for (let i = 0; i < ring.length && at < L; i++) {
+      const p = ring[i], q = ring[(i + 1) % ring.length], e = Math.hypot(q[0] - p[0], q[1] - p[1])
+      while (at <= s + e && at < L) { const t = e > 0 ? (at - s) / e : 0; sources.push({ x: p[0] + (q[0] - p[0]) * t, y: p[1] + (q[1] - p[1]) * t, at: 0 }); at += L / n }
+      s += e
+    }
+  }
+  // Edge sources too near a scattered one would leave slivers between them.
+  const kept = sources.filter((src, i) => i < darts.points.length / 2 || sources.slice(0, darts.points.length / 2).every(o => Math.hypot(o.x - src.x, o.y - src.y) > 0.5 * a))
+  for (const src of kept) src.at = Math.min(1, reachOf(src.x, src.y))
+  kept.sort((p, q) => p.at - q.at)
+  add(base[0], base[1], -1)
+  let live: number[] = [], next = 0, front = 0
+  const step = D / Math.max(1e-9, Math.max(...kept.map(src => Math.hypot(src.x - base[0], src.y - base[1]))))
+  const neighbourhood = (t: number) => {
+    const near: { n: number; d: number }[] = []
+    within(kept[t].x, kept[t].y, reach, (n, d) => { near.push({ n, d }) })
+    near.sort((p, q) => p.d - q.d)
+    const rn: { n: number; d: number }[] = []
+    for (let i = 0; i < near.length && i < 48; i++) {
+      const v = near[i]
+      let open = true
+      for (let k = 0; k < i && open; k++) if (Math.hypot(x[near[k].n] - x[v.n], y[near[k].n] - y[v.n]) < v.d) open = false
+      if (open) rn.push(v)
+    }
+    return rn
+  }
+  const join = (t: number, arrived: { n: number; d: number }[]) => {
+    if (!arrived.length) return
+    const j = add(kept[t].x, kept[t].y, arrived[0].n)
+    const joined = [arrived[0].n]
+    for (const { n } of arrived.slice(1)) {
+      if (joined.some(m => pathLength(n, m) < 2 * a)) continue
+      loops.push([n, j]); joined.push(n)
+    }
+  }
+  for (let iter = 0; iter < 5000 && x.length < 30000 && (next < kept.length || live.length); iter++) {
+    front += step
+    while (next < kept.length && kept[next].at <= front) {
+      // A source switching on next to a vein that's already there is spent: the vein feeds it.
+      let clear = true
+      within(kept[next].x, kept[next].y, 0.5 * a, () => { clear = false; return true })
+      if (clear) live.push(next)
+      next++
+    }
+    const pull = new Map<number, Vec>()
+    const still: number[] = []
+    let joined = 0
+    for (const t of live) {
+      const rn = neighbourhood(t)
+      if (!rn.length) { still.push(t); continue }
+      const waiting = rn.filter(v => v.d >= kill)
+      if (!waiting.length) { join(t, rn); joined++; continue }
+      still.push(t)
+      for (const v of waiting) {
+        const p = pull.get(v.n) ?? [0, 0]
+        p[0] += (kept[t].x - x[v.n]) / v.d; p[1] += (kept[t].y - y[v.n]) / v.d
+        pull.set(v.n, p)
+      }
+    }
+    live = still
+    let grew = 0
+    for (const [n, [vx, vy]] of pull) {
+      const len = Math.hypot(vx, vy)
+      if (len < 1e-9) continue
+      const px = x[n] + (vx / len) * D, py = y[n] + (vy / len) * D
+      let crowded = !contains(region, px, py)
+      if (!crowded) within(px, py, 0.5 * D, () => { crowded = true; return true })
+      if (!crowded) { add(px, py, n); grew++ }
+    }
+    if (!grew && !joined && next >= kept.length) {
+      // Stuck: each source joins the veins that did arrive, and the rest are dropped.
+      for (const t of live) join(t, neighbourhood(t).filter(v => v.d < kill))
+      live = []
+    }
+  }
+  // The graph: growth edges and the joins that close loops.
+  const degree = new Array<number>(x.length).fill(0)
+  const edges: [number, number][] = []
+  for (let n = 1; n < x.length; n++) edges.push([parent[n], n])
+  edges.push(...loops)
+  for (const [u, v] of edges) { degree[u]++; degree[v]++ }
+  // Trim ends that stop inside the leaf, back to the junction they hang from, over and over.
+  const onEdge = (n: number) => !contains(region, x[n], y[n]) || rings.some(ring => ring.some((p, i) => {
+    const q = ring[(i + 1) % ring.length], ex = q[0] - p[0], ey = q[1] - p[1], L2 = ex * ex + ey * ey || 1
+    const t = Math.max(0, Math.min(1, ((x[n] - p[0]) * ex + (y[n] - p[1]) * ey) / L2))
+    return Math.hypot(x[n] - p[0] - t * ex, y[n] - p[1] - t * ey) < 1e-6 * size
+  }))
+  const adj: number[][] = x.map(() => [])
+  edges.forEach(([u, v], e) => { adj[u].push(e); adj[v].push(e) })
+  const gone = new Uint8Array(edges.length)
+  const ends = x.map((_, n) => n).filter(n => n > 0 && degree[n] === 1 && !onEdge(n))
+  while (ends.length) {
+    const n = ends.pop()!
+    if (degree[n] !== 1) continue
+    const e = adj[n].find(f => !gone[f])
+    if (e === undefined) continue
+    gone[e] = 1
+    const m = edges[e][0] === n ? edges[e][1] : edges[e][0]
+    degree[n]--; degree[m]--
+    if (m > 0 && degree[m] === 1 && !onEdge(m)) ends.push(m)
+  }
+  const live2 = edges.filter((_, e) => !gone[e])
+  // Tips each point feeds on what's left of the growth tree (the pipe model). A point is only ever added after
+  // its parent, so going down the indices visits children before parents.
+  const children: number[][] = x.map(() => [])
+  for (let n = 1; n < x.length; n++) if (!gone[n - 1]) children[parent[n]].push(n) // edge n − 1 is parent[n] → n
+  const tips = new Array<number>(x.length).fill(1)
+  for (let n = x.length - 1; n >= 0; n--) tips[n] = children[n].length ? children[n].reduce((s, c) => s + tips[c], 0) : 1
+  return { x, y, edges: live2, tips, rootTips: tips[0] }
+}
+
+// A vein graph as polylines that run between its junctions and ends (and the start, point 0), so smoothing
+// keeps every join in place.
+function graphChains(g: VeinGraph): number[][] {
+  const adj: number[][] = g.x.map(() => [])
+  g.edges.forEach(([u, v], e) => { adj[u].push(e); adj[v].push(e) })
+  const used = new Uint8Array(g.edges.length), chains: number[][] = []
+  const other = (e: number, n: number) => (g.edges[e][0] === n ? g.edges[e][1] : g.edges[e][0])
+  const follow = (start: number, e: number) => {
+    const chain = [start]
+    let n = start
+    for (;;) {
+      used[e] = 1
+      n = other(e, n)
+      chain.push(n)
+      if (adj[n].length !== 2 || n === 0) break
+      const next = adj[n].find(f => !used[f])
+      if (next === undefined) break
+      e = next
+    }
+    chains.push(chain)
+  }
+  for (let n = 0; n < g.x.length; n++) if (adj[n].length !== 2 || n === 0) for (const e of adj[n]) if (!used[e]) follow(n, e)
+  // Loops with no junction on them at all.
+  for (let n = 0; n < g.x.length; n++) for (const e of adj[n]) if (!used[e]) follow(n, e)
+  return chains
+}
+
 // Chaikin smoothing that keeps both ends.
 function smooth(points: Vec[], passes = 2): Vec[] {
   let p = points
@@ -345,6 +555,17 @@ export function makeVeins(region: Region, v: VeinSettings): Vein[] {
   }
   const base = veinBase(region, v.start)
   const count = Math.max(1, Math.round(v.count))
+  if (v.style === 'leaf' && v.loops) {
+    const g = leafLoops(region, base, count)
+    return graphChains(g).map(chain => {
+      const pts = smooth(chain.map((n): Vec => [g.x[n], g.y[n]]))
+      const widths = pts.map((_, i) => {
+        const t = g.tips[chain[Math.min(chain.length - 1, Math.round((i / Math.max(1, pts.length - 1)) * (chain.length - 1)))]]
+        return v.width * Math.max(1 - taper, Math.sqrt(t / Math.max(1, g.rootTips)))
+      })
+      return simplify(pts, widths, tol)
+    })
+  }
   if (v.style === 'leaf') {
     const { chains, tips, rootTips } = leafVeins(region, base, count)
     return chains.map((chain, c) => {
@@ -426,7 +647,7 @@ export function splitByVeins(region: Region, veins: Vein[]): Region {
 const splits: { key: string; rings: Polygon[] | undefined; lines: Polygon[] | null; region: Region }[] = []
 export function veinedRegion(region: Region, v: VeinSettings): Region {
   if (v.style === 'none') return region
-  const key = [v.style, v.count, v.start, v.width, v.taper, region.shape, region.x0, region.y0, region.x1, region.y1].join('|')
+  const key = [v.style, v.count, v.start, v.width, v.taper, v.style === 'leaf' && v.loops, region.shape, region.x0, region.y0, region.x1, region.y1].join('|')
   const lines = v.style === 'imported' ? v.lines : null
   const hit = splits.find(s => s.key === key && s.rings === region.rings && s.lines === lines)
   if (hit) return hit.region

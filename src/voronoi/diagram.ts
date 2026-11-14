@@ -7,7 +7,8 @@ import { Delaunay } from 'd3-delaunay'
 import { centroid, clipConvex, normalize, signedArea, type Polygon, type Segment, type Vec } from './geometry'
 import { clampToRegion, contains, regionArea, regionCenter, regionHeight, regionPolygon, regionWidth, type Region } from './region'
 import { boxOf, shapeIndex } from './shape'
-import { cellsToSheet, pointsToWork, segmentsToSheet, stretchFrame, workRegion, type Stretch } from './stretch'
+import { cellsToSheet, pointsToWork, segmentsToSheet, stretchFrame, varyingField, workRegion, type Stretch } from './stretch'
+import { boxClip, fieldDiagram, metricAt, metricDistance2, metricGrid, RELAX_BENDS, type FieldDiagram, type FieldSpec } from './field'
 
 export type Cell = Polygon[]
 export type Cells = (Cell | null)[]
@@ -71,7 +72,45 @@ function perPart(points: Float64Array, parts: Region[], each: (pts: Float64Array
   })
 }
 
+// ---------- stretch that follows a field ----------
+
+// How a segment is cut to a region, matching the plain diagram: the box, the ellipse, or the shape.
+function segmentClip(region: Region): (s: Segment) => Segment[] {
+  if (region.shape === 'custom') { const shape = shapeIndex(region.rings ?? []); return s => shape.clipSegment(s) }
+  if (region.shape === 'ellipse') return s => { const c = clipToEllipse(s, region); return c ? [c] : [] }
+  return boxClip(region)
+}
+// The last field diagram, since a rebuild asks for cells and then Delaunay lines of the same points.
+const lastFields: ({ points: Float64Array; region: Region; field: FieldSpec; result: FieldDiagram } | null)[] = [null, null]
+export function fieldMetric(field: FieldSpec, region: Region, n: number) {
+  return metricGrid(field, region, Math.sqrt(regionArea(region) / Math.max(1, n)))
+}
+// relaxing: the cells relaxing works in, with every wall bent (see fieldDiagram); else the drawn ones. Each
+// keeps its last result.
+function fieldBuild(points: Float64Array, region: Region, field: FieldSpec, relaxing = false): FieldDiagram {
+  const lastField = lastFields[relaxing ? 1 : 0]
+  if (lastField && lastField.points === points && lastField.region === region && lastField.field === field) return lastField.result
+  const n = points.length / 2
+  const grid = fieldMetric(field, region, n)
+  const parts = regionParts(region)
+  let result: FieldDiagram
+  if (parts) {
+    const cells: Cells = new Array(n).fill(null), internal: Segment[] = [], delaunay: Segment[] = []
+    perPart(points, parts, (pts, part, index) => {
+      const d = fieldDiagram(pts, part, grid, segmentClip(part), RELAX_BENDS, !relaxing)
+      d.cells.forEach((c, k) => { cells[index[k]] = c })
+      internal.push(...d.internal); delaunay.push(...d.delaunay)
+    })
+    result = { cells, internal, delaunay }
+  } else result = fieldDiagram(points, region, grid, segmentClip(region), RELAX_BENDS, !relaxing)
+  lastFields[relaxing ? 1 : 0] = { points, region, field, result }
+  return result
+}
+
+// The cells relaxing moves points within. With a field stretch their walls bend to follow it (see field.ts).
 export function buildCells(points: Float64Array, region: Region, stretch?: Stretch | null): Cells {
+  const field = varyingField(stretch)
+  if (field) return points.length ? fieldBuild(points, region, field, true).cells : []
   const f = stretchFrame(stretch)
   if (f) return cellsToSheet(buildCells(pointsToWork(points, f), workRegion(region, f)), f)
   const n = points.length / 2
@@ -89,6 +128,8 @@ export function buildCells(points: Float64Array, region: Region, stretch?: Stret
 // Cells and each inner edge once, for drawing and cutting. d3 lists every shared edge exactly once, which
 // is much faster than matching the edges of neighbouring cells.
 export function buildDiagram(points: Float64Array, region: Region, stretch?: Stretch | null): { cells: Cells; internal: Segment[] } {
+  const field = varyingField(stretch)
+  if (field) { if (!points.length) return { cells: [], internal: [] }; const d = fieldBuild(points, region, field); return { cells: d.cells, internal: d.internal } }
   const f = stretchFrame(stretch)
   if (f) {
     const work = buildDiagram(pointsToWork(points, f), workRegion(region, f))
@@ -153,12 +194,15 @@ function cellsOf(voronoi: Voronoi, n: number, region: Region): Cells {
 
 // Index of the point nearest to x, y, which is also the cell that contains it. With a stretch, nearest is
 // measured with the stretch's ellipse, so it's still the cell under x, y; leave it out to find the dot itself.
-export function nearestPoint(points: Float64Array, x: number, y: number, stretch?: Stretch | null): { index: number; distance: number } {
+// A field stretch needs the region too, to read the field's ellipse at x, y.
+export function nearestPoint(points: Float64Array, x: number, y: number, stretch?: Stretch | null, region?: Region): { index: number; distance: number } {
   const f = stretchFrame(stretch)
+  const field = varyingField(stretch)
+  const m = field && region ? metricAt(fieldMetric(field, region, points.length / 2), x, y) : null
   let index = -1, best = Infinity
   for (let i = 0; i < points.length; i += 2) {
     const dx = points[i] - x, dy = points[i + 1] - y
-    const d = f ? (f.a * dx + f.b * dy) ** 2 + (f.b * dx + f.c * dy) ** 2 : dx * dx + dy * dy
+    const d = m ? metricDistance2(m, dx, dy) : f ? (f.a * dx + f.b * dy) ** 2 + (f.b * dx + f.c * dy) ** 2 : dx * dx + dy * dy
     if (d < best) { best = d; index = i / 2 }
   }
   return { index, distance: Math.sqrt(best) }
@@ -189,6 +233,8 @@ export function uniqueEdges(cells: Cells): { internal: Segment[]; boundary: Segm
 // middle falls outside the region are left out, so the border doesn't fill with dark bands. In a custom
 // shape, the rest are clipped to it, so no line crosses one of its holes or notches.
 export function delaunayEdges(points: Float64Array, region: Region, stretch?: Stretch | null): Segment[] {
+  const field = varyingField(stretch)
+  if (field) return points.length >= 4 ? fieldBuild(points, region, field).delaunay : []
   const f = stretchFrame(stretch)
   if (f) return segmentsToSheet(delaunayEdges(pointsToWork(points, f), workRegion(region, f)), f)
   const n = points.length / 2

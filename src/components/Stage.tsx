@@ -164,7 +164,7 @@ export function Stage({ geometry, points, settings, tool, frameRef, controlRef, 
   const eraseAt = (x: number, y: number, last: number): number => {
     const current = live.current
     if (!inRegion(x, y) || current.length <= 2) return last
-    const { index } = nearestPoint(current, x, y, stretch)
+    const { index } = nearestPoint(current, x, y, stretch, geometry.region)
     if (index < 0 || index === last) return last
     const next = new Float64Array(current.length - 2)
     next.set(current.subarray(0, index * 2)); next.set(current.subarray(index * 2 + 2), index * 2)
@@ -279,7 +279,7 @@ export function Stage({ geometry, points, settings, tool, frameRef, controlRef, 
       return
     }
     if (erasing) {
-      const near = inRegion(x, y) ? nearestPoint(live.current, x, y, stretch) : null
+      const near = inRegion(x, y) ? nearestPoint(live.current, x, y, stretch, geometry.region) : null
       setHover(near && near.index >= 0 ? { kind: 'cell', index: near.index } : null)
       setCursor(near ? 'pointer' : 'default')
       return

@@ -13,7 +13,7 @@ import { cutDxf } from './lib/dxfExport'
 import { EXTENSION, parseProject, ProjectError, serializeProject } from './lib/project'
 import { pngProblem, renderPng } from './lib/render'
 import { saveFile } from './lib/saveFile'
-import { DEFAULTS, seedSettings, type Settings } from './lib/settings'
+import { DEFAULTS, seedSettings, stretchOf, type Settings } from './lib/settings'
 import { artworkSvg, laserSvg } from './lib/svgExport'
 import { PICTURE_ACCEPT, PictureError, readPicture } from './lib/pictureFile'
 import { readSvgOutlines, SvgShapeError } from './lib/svgShape'
@@ -95,11 +95,13 @@ export function App() {
 
   // Geometry depends on a few settings only, so colour and visibility changes don't rebuild it.
   const { width, height, shape, customShape, border, cellStyle, web, cornerRadius, minHole, showDelaunay, stretch, stretchAngle } = s
-  const { veins, veinCount, veinStart, veinWidth, veinTaper, veinLines, wallsFollow } = s
+  const { veins, veinCount, veinStart, veinWidth, veinTaper, veinLines, veinLoops, wallsFollow } = s
+  // The stretch with any field it follows: the same object until a setting it reads changes (see stretchOf).
+  const stretchSpec = stretchOf(s)
   const patternSettings = useMemo(() => ({ width, height, shape, customShape, border, cellStyle, web, cornerRadius, minHole, showDelaunay, stretch, stretchAngle,
-    veins, veinCount, veinStart, veinWidth, veinTaper, veinLines, wallsFollow }),
+    stretchSpec, veins, veinCount, veinStart, veinWidth, veinTaper, veinLines, veinLoops, wallsFollow }),
   [width, height, shape, customShape, border, cellStyle, web, cornerRadius, minHole, showDelaunay, stretch, stretchAngle,
-    veins, veinCount, veinStart, veinWidth, veinTaper, veinLines, wallsFollow])
+    stretchSpec, veins, veinCount, veinStart, veinWidth, veinTaper, veinLines, veinLoops, wallsFollow])
   const geometry = useMemo(() => buildGeometry(doc.points, patternSettings), [doc.points, patternSettings])
   const exactSpacing = useCallback(() => spacingOf(s), [s])
   const count = doc.points.length / 2

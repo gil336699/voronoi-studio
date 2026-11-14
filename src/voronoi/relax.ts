@@ -2,13 +2,15 @@
 // gradient, the centre is weighted so the gradient survives relaxing. Relaxed patterns settle with point
 // density proportional to the square root of the weight, so the weight is the density squared.
 import { densityField, densityPicture, uniformDensity, type DensitySettings } from './density'
-import { buildCells, cellCentroid, partOf, regionParts, type Cell } from './diagram'
+import { buildCells, cellCentroid, fieldMetric, partOf, regionParts, type Cell } from './diagram'
+import { metricCentroid } from './field'
 import type { Vec } from './geometry'
 import { pictureCentroid } from './picture'
 import { clampToRegion, contains, type Region } from './region'
-import type { Stretch } from './stretch'
+import { varyingField, type Stretch } from './stretch'
 
-export type RelaxResult = { points: Float64Array; maxMove: number }
+// settleMove: what Auto-relax compares with its tolerance. The largest move, except with a field (see lloydStep).
+export type RelaxResult = { points: Float64Array; maxMove: number; settleMove?: number }
 
 function weightedCentroid(cell: Cell, field: (x: number, y: number) => number): Vec {
   // Fan triangles from each ring's first vertex, with signed areas so concave pieces and holes come out
@@ -38,11 +40,17 @@ export function lloydStep(points: Float64Array, region: Region, density: Density
   const field = densityField(density, region)
   // A picture's pixels are integrated exactly; the smooth gradients are sampled.
   const picture = densityPicture(density)
-  const centre = (cell: Cell): Vec => (picture ? pictureCentroid(cell, picture) ?? cellCentroid(cell) : weighted ? weightedCentroid(cell, field) : cellCentroid(cell))
+  // With a field stretch, the target minimises distance measured by each place's own ellipse (see field.ts).
+  const varying = varyingField(stretch)
+  const grid = varying ? fieldMetric(varying, region, points.length / 2) : null
+  const weight = weighted ? (x: number, y: number) => { const d = field(x, y); return d * d } : () => 1
+  const centre = (cell: Cell): Vec => grid ? metricCentroid(cell, grid, weight) ?? cellCentroid(cell)
+    : picture ? pictureCentroid(cell, picture) ?? cellCentroid(cell) : weighted ? weightedCentroid(cell, field) : cellCentroid(cell)
   const out = new Float64Array(points.length)
   // With veins, each point stays in its own piece between them.
   const parts = regionParts(region), owner = parts ? partOf(points, parts) : null
   let maxMove = 0
+  const moves = grid ? new Float64Array(cells.length) : null
   for (let i = 0; i < cells.length; i++) {
     const cell = cells[i]
     let x = points[i * 2], y = points[i * 2 + 1]
@@ -52,9 +60,15 @@ export function lloydStep(points: Float64Array, region: Region, density: Density
       // A piece of a cell that wraps a concave edge can have its centre outside the shape.
       ;[x, y] = home.shape === 'custom' && contains(home, tx, ty) ? [tx, ty] : clampToRegion(home, tx, ty)
     }
-    maxMove = Math.max(maxMove, Math.hypot(x - points[i * 2], y - points[i * 2 + 1]))
+    const move = Math.hypot(x - points[i * 2], y - points[i * 2 + 1])
+    maxMove = Math.max(maxMove, move)
+    if (moves) moves[i] = move
     out[i * 2] = x; out[i * 2 + 1] = y
   }
+  // With a field, a few points keep trading a little area with a neighbour where two triangles are close to
+  // swapping diagonals, so the largest move never falls to Auto-relax's tolerance (a 2,000th of the spacing).
+  // There it settles once 99 % of points move less than a 100th of the spacing: a 20th of the 99th percentile.
+  if (moves && moves.length) { moves.sort(); return { points: out, maxMove, settleMove: moves[Math.floor((moves.length - 1) * 0.99)] / 20 } }
   return { points: out, maxMove }
 }
 

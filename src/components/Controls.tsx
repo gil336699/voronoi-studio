@@ -24,6 +24,24 @@ export function SwitchField({ label, checked, onChange, tip, unavailable }: Tip 
 
 export type Option<T extends string> = { value: T; label: string; tip: string; unavailable?: string | false }
 
+// A drop-down for longer lists. The tooltip describes the chosen option; an unavailable option is greyed
+// out, with its short reason (`unavailable`) after its name.
+export function SelectField<T extends string>({ label, options, value, onChange, unavailable, name }: {
+  label: string; options: Option<T>[]; value: T; onChange: (value: T) => void; unavailable?: string | false; name?: string
+}) {
+  const chosen = options.find(o => o.value === value)
+  return <label className="field" data-tip={unavailable || chosen?.unavailable || chosen?.tip}>
+    <span className="field-label"><span>{label}</span></span>
+    <select value={value} aria-label={name} disabled={Boolean(unavailable)} onChange={event => {
+      const next = options.find(o => o.value === event.currentTarget.value)
+      if (next && !next.unavailable) onChange(next.value)
+    }}>
+      {options.map(o => <option key={o.value} value={o.value} disabled={Boolean(o.unavailable) && o.value !== value}>
+        {o.unavailable ? `${o.label} (${o.unavailable})` : o.label}</option>)}
+    </select>
+  </label>
+}
+
 export function Segmented<T extends string>({ label, options, value, onChange, unavailable, hideLabel }: {
   label: string; options: Option<T>[]; value: T; onChange: (value: T) => void; unavailable?: string | false; hideLabel?: boolean
 }) {

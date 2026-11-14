@@ -1,5 +1,24 @@
 # Voronoi Studio Changelog
 
+## 1.9.0 2026-11-13
+
+- **Stretch that follows a field.** Stretch has a new **Follows** list. Cells can still all stretch one way, or now follow:
+  - rays or rings round a centre, or a spiral in between;
+  - a saddle;
+  - waves;
+  - a grid of swirls;
+  - smooth noise, or swirling noise like smoke or marbling;
+  - the veins;
+  - the density picture's contours.
+
+  Each field has its own controls: Centre X and Y, Turn, Waves and Swing, Swirls, Detail, and New flow for another noise field. Before, the stretch had one direction for the whole sheet.
+- Cells tile the sheet exactly and never cross themselves, so holes, rounded corners and cut files work as before. Their walls are straight, bending slightly only where the field turns sharply. In testing, 1,200 relaxed cells at 3× lined up within 1.1–1.8° of the field.
+- Where the field turns faster than cells that size can follow, such as a vortex's eye, a swirl's centre or busy noise with few cells, the cells stay round instead of bunching up. The hint says how much of the sheet follows the field, and suggests lowering the detail or adding cells when that's under 60 %.
+- Auto-relax keeps field patterns even and settles: 1,200 cells in rings settled after 98 steps (3.0 s), as even in size as at the start.
+- Erasing with a field picks the cell under the pointer, measured with the field's ellipse there.
+- **Leaf veins join into loops.** Leaf veins now grow out from the start as the leaf's edge grows, and join where they meet (closed venation, Runions et al. 2005). They close off regions inside the leaf, as a leaf's finer veins do, and no vein stops in the middle of a region. **Loops** sets about how many regions there are: asking for 16, 30 and 60 gave 18, 28 and 55. Turn off **Join into loops** for the branching veins of 1.8.0.
+- Projects are now version 6. Older projects open as before, with one direction and Leaf veins without loops. Patterns without a field or loops are unchanged: 270 of 270 seeding setups and 288 of 288 whole-pipeline setups give the same result as 1.8.0.
+
 ## 1.8.0 2026-11-13
 
 - **Veins.** A new Veins section on the Pattern tab splits the sheet into regions, each filled with its own cells, like an insect wing's main veins (Hoffmann et al. 2018). No cell reaches across a vein. **Wing** veins fan out from the middle of a side, or from the centre, to the far edges, running side by side near the start and branching at shallow angles. They never cross. **Leaf** veins grow and branch toward the edges, thickest where they feed the most branches. **Imported** uses open lines from an SVG.

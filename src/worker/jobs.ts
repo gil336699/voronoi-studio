@@ -8,7 +8,8 @@ import { seedSettings, stretchOf, type Settings } from '../lib/settings'
 export type Job =
   | { kind: 'generate'; settings: Settings }
   | { kind: 'relax'; settings: Settings; points: Float64Array; steps: number }
-export type JobResult = { points: Float64Array; maxMove: number; capped: boolean; spacing: number }
+// settleMove: what Auto-relax compares with its tolerance (see RelaxResult).
+export type JobResult = { points: Float64Array; maxMove: number; settleMove?: number; capped: boolean; spacing: number }
 
 export function runJob(job: Job): JobResult {
   const region = patternRegion(job.settings)

@@ -6,16 +6,17 @@ import { readSvgOutlines } from '../lib/svgShape'
 import { cellArea, regionParts, partOf } from './diagram'
 import { signedArea, type Polygon, type Vec } from './geometry'
 import { buildGeometry, patternRegion, veinLinesAt, type PatternSettings } from './pattern'
-import { regionArea, type Region } from './region'
+import { regionArea, regionRings, type Region } from './region'
 import { relax } from './relax'
 import { seedPoints } from './seeding'
 import { veinsFromLines } from './veinLines'
-import { makeVeins, type VeinSettings } from './veins'
+import { makeVeins, veinBase, type VeinSettings } from './veins'
+import { shapeFromOutlines } from './shape'
 
 const flat = { mode: 'none' as const, strength: 1, angle: 0, invert: false }
 const base: PatternSettings = { width: 200, height: 120, shape: 'rect', customShape: null, border: 3, cellStyle: 'lines', web: 1, cornerRadius: 0.5, minHole: 0.3, showDelaunay: false,
   veins: 'wing', veinCount: 10, veinStart: 'left', veinWidth: 1.2, veinTaper: 60 }
-const vs = (s: PatternSettings): VeinSettings => ({ style: s.veins!, count: s.veinCount!, start: s.veinStart!, width: s.veinWidth!, taper: s.veinTaper! / 100, lines: null })
+const vs = (s: PatternSettings): VeinSettings => ({ style: s.veins!, count: s.veinCount!, start: s.veinStart!, width: s.veinWidth!, taper: s.veinTaper! / 100, lines: null, loops: s.veinLoops })
 const seeded = (region: Region, count = 600) => seedPoints({ count, placement: 'even', autoSpacing: true, spacing: 5, tries: 30, jitter: 0, seed: 2, density: flat }, region).points
 
 // Whether segments ab and cd cross at a point inside both (not at a shared end).
@@ -119,12 +120,12 @@ describe('veins', () => {
     expect(Math.max(...g.edges.widths!)).toBeCloseTo(1, 1)
   })
 
-  it('saves veins in version 5 projects and drops damaged ones', () => {
+  it('saves veins in projects (version 5 on) and drops damaged ones', () => {
     const veinLines = { name: 'w.svg', lines: [[0, 0.5, 1, 0.5]] }
     const settings = { ...DEFAULTS, veins: 'imported' as const, veinLines, veinCount: 12 }
     const text = serializeProject({ settings, points: new Float64Array(), handEdited: false })
     expect(JSON.parse(text).version).toBe(VERSION)
-    expect(VERSION).toBe(5)
+    expect(VERSION).toBeGreaterThanOrEqual(5)
     expect(parseProject(text).settings).toEqual(settings)
     expect(sanitizeSettings({ veins: 'imported', veinLines: { lines: [[0, 0, 'x', 1]] } })).toMatchObject({ veins: 'none', veinLines: null })
     expect(sanitizeSettings({ veinCount: 500, veinTaper: -5, veinStart: 'middle' })).toMatchObject({ veinCount: 60, veinTaper: 0, veinStart: 'left' })
@@ -138,6 +139,83 @@ describe('veins', () => {
     const g = buildGeometry(seeded(region), s)
     expect(g.metrics.cells).toBe(600)
     expect(g.cells.every(c => c && c.length === 1)).toBe(true)
+  })
+})
+
+describe('leaf veins with loops', () => {
+  const loopy: PatternSettings = { ...base, veins: 'leaf', veinLoops: true, veinCount: 16 }
+  const near = (p: Vec, rings: Polygon[], tol: number) => rings.some(ring => ring.some((a, i) => {
+    const b = ring[(i + 1) % ring.length], ex = b[0] - a[0], ey = b[1] - a[1], L2 = ex * ex + ey * ey || 1
+    const t = Math.max(0, Math.min(1, ((p[0] - a[0]) * ex + (p[1] - a[1]) * ey) / L2))
+    return Math.hypot(p[0] - a[0] - t * ex, p[1] - a[1] - t * ey) < tol
+  }))
+  // Vein ends that are neither a join (shared with another vein), on the edge, nor the start.
+  const looseEnds = (s: PatternSettings) => {
+    const sheet = patternRegion({ ...s, veins: 'none' }), veins = makeVeins(sheet, vs(s)), start = veinBase(sheet, s.veinStart!)
+    const key = (p: Vec) => `${p[0].toFixed(6)},${p[1].toFixed(6)}`, seen = new Map<string, number>()
+    const ends = veins.flatMap(v => [v.points[0], v.points[v.points.length - 1]])
+    for (const e of ends) seen.set(key(e), (seen.get(key(e)) ?? 0) + 1)
+    return ends.filter(e => seen.get(key(e)) === 1 && !near(e, regionRings(sheet), 1e-4) && Math.hypot(e[0] - start[0], e[1] - start[1]) > 1e-6).length
+  }
+  // Regions that don't reach the pattern's edge: what only loops make many of.
+  const inner = (s: PatternSettings) => {
+    const sheet = patternRegion({ ...s, veins: 'none' })
+    return patternRegion(s).parts!.filter(part => !part[0].some(q => near(q, regionRings(sheet), 0.5))).length
+  }
+
+  it('joins veins into loops, closing off regions inside the leaf, about as many regions as asked', () => {
+    for (const count of [8, 16, 30]) {
+      const parts = patternRegion({ ...loopy, veinCount: count }).parts!.length
+      expect(parts).toBeGreaterThan(count * 0.6)
+      expect(parts).toBeLessThan(count * 1.6)
+    }
+    expect(inner({ ...loopy, veinCount: 30 })).toBeGreaterThan(15)
+    expect(inner({ ...loopy, veinCount: 30, veinLoops: false })).toBeLessThan(15) // open veins branch like a tree
+  })
+
+  it('leaves no vein ending inside the leaf: every end is a join, on the edge, or the start', () => {
+    for (const patch of [{}, { veinCount: 40 }, { veinStart: 'centre' }, { shape: 'ellipse' }] as Partial<PatternSettings>[]) expect(looseEnds({ ...loopy, ...patch })).toBe(0)
+    expect(looseEnds({ ...loopy, veinLoops: false })).toBeGreaterThan(0)
+  })
+
+  it('grows the same loops each time, thickest from the start', () => {
+    const sheet = patternRegion({ ...loopy, veins: 'none' }), start = veinBase(sheet, 'left')
+    const a = makeVeins(sheet, vs(loopy))
+    expect(makeVeins(patternRegion({ ...loopy, veins: 'none' }), vs(loopy))).toEqual(a)
+    const widest = Math.max(...a.flatMap(v => v.widths))
+    const fromStart = a.filter(v => Math.hypot(v.points[0][0] - start[0], v.points[0][1] - start[1]) < 1e-6)
+    expect(fromStart.length).toBeGreaterThan(0)
+    expect(Math.max(...fromStart.map(v => v.widths[0]))).toBe(widest)
+    // Most veins are much thinner than the one from the start.
+    const widths = a.flatMap(v => v.widths).sort((p, q) => p - q)
+    expect(widths[Math.floor(widths.length / 2)]).toBeLessThan(widest * 0.6)
+  })
+
+  it('works round a hole, and fills every region with its own cells', () => {
+    const pill = shapeFromOutlines(readSvgOutlines(readFileSync(new URL('../../test-fixtures/pill-with-hole.svg', import.meta.url), 'utf8')).rings, 'pill')
+    const s: PatternSettings = { ...loopy, shape: 'custom', customShape: pill, width: 160, height: 80, border: 4 }
+    expect(looseEnds(s)).toBe(0)
+    // Veins reach the hole's edge too, so the regions round it close against it.
+    const sheet = patternRegion({ ...s, veins: 'none' }), hole = regionRings(sheet).filter(r => signedArea(r) < 0)
+    expect(hole.length).toBe(1)
+    expect(makeVeins(sheet, vs(s)).flatMap(v => [v.points[0], v.points[v.points.length - 1]]).filter(p => near(p, hole, 1e-4)).length).toBeGreaterThan(0)
+    const region = patternRegion(s)
+    expect(region.parts!.length).toBeGreaterThan(8)
+    const points = seeded(region)
+    const g = buildGeometry(points, s)
+    // Every cell is one piece inside its own region, and the regions are exactly filled.
+    const parts = regionParts(region)!, owner = partOf(points, parts), byPart = new Map<number, number>()
+    g.cells.forEach((c, i) => { expect(c!.length).toBe(1); byPart.set(owner[i], (byPart.get(owner[i]) ?? 0) + cellArea(c!)) })
+    for (const [p, area] of byPart) expect(area / regionArea(parts[p])).toBeCloseTo(1, 3)
+  })
+
+  it('keeps open Leaf veins for files from before loops, and saves the choice', () => {
+    expect(DEFAULTS.veinLoops).toBe(true)
+    expect(sanitizeSettings({ veins: 'leaf' }).veinLoops).toBe(false)
+    expect(sanitizeSettings({ veins: 'leaf', veinLoops: true }).veinLoops).toBe(true)
+    const settings = { ...DEFAULTS, veins: 'leaf' as const, veinLoops: false, veinCount: 20 }
+    const text = serializeProject({ settings, points: new Float64Array(), handEdited: false })
+    expect(parseProject(text).settings).toEqual(settings)
   })
 })
 

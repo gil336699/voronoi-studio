@@ -1,6 +1,6 @@
 # Voronoi Studio
 
-Voronoi Studio is a browser app for designing Voronoi patterns to make things with. Pick a sheet size and shape, or import your own outline from an SVG, choose how many cells and how they're placed, shape them with gradients (including one from your own photo or drawing), stretch them into long cells, split them with veins like an insect wing or a leaf, and relax them, and drag, add or erase cells by hand. Then export them at real size: a laser-ready SVG or a DXF for cutting, or an SVG or PNG for artwork. It rebuilds and extends Gil's Voronoi Lab.
+Voronoi Studio is a browser app for designing Voronoi patterns to make things with. Pick a sheet size and shape, or import your own outline from an SVG, choose how many cells and how they're placed, shape them with gradients (including one from your own photo or drawing), stretch them into long cells that can follow a flow, split them with veins like an insect wing or a leaf, and relax them, and drag, add or erase cells by hand. Then export them at real size: a laser-ready SVG or a DXF for cutting, or an SVG or PNG for artwork. It rebuilds and extends Gil's Voronoi Lab.
 
 **Use it online:** https://gil336699.github.io/voronoi-studio/
 
@@ -48,7 +48,7 @@ Narrower windows show tool and action buttons as symbols only. On tablets the sh
 ## Workflow
 
 1. **Sheet.** Choose a preset such as a 200 mm tile, A4, a 12 × 12 in laser sheet or a Ø 100 mm coaster, or type a size. Choose Rectangle or Ellipse and a border. Or press **Import SVG shape…**, or drop an SVG on the window, to fill your own outline; outlines inside it become holes.
-2. **Pattern.** Set the number of cells and the placement. Add a density gradient for cells that get smaller toward one side, the centre or the edge, or where a picture of yours is dark: choose **Picture**, or drop a photo on the window. Turn up **Stretch** for cells that grow longer in one direction.
+2. **Pattern.** Set the number of cells and the placement. Add a density gradient for cells that get smaller toward one side, the centre or the edge, or where a picture of yours is dark: choose **Picture**, or drop a photo on the window. Turn up **Stretch** for cells that grow longer in one direction, or along a flow: rings round a centre, waves, swirls, noise, the veins or a picture's contours.
 3. **Relax.** New patterns get a few relaxation steps. Press **Relax** for more, or **Auto-relax** to keep going until you stop it. While it's on, change the cell count, placement, gradient or sheet and watch the new pattern relax, or drag a point and watch the cells around it follow; the point stays under the pointer until you let go. Once the points settle it waits for your next change. Stop, Undo, Redo, New and Open turn it off.
 4. **Edit by hand.** Drag points to move cells, Alt-click (or the Add tool) to add one, Shift-click (or the Erase tool) to remove one. Once points are edited by hand, pattern settings wait for **Apply settings…** so your edits aren't lost by accident.
 5. **Style.** **Lines** draws each edge once. **Holes** cuts each cell out, leaving a web of material, with rounded corners and a smallest-hole limit.
@@ -128,6 +128,22 @@ What to expect: a cut sheet has to be covered with cells, so white gets the larg
 
 **Stretch** makes cells longer in one direction, like wood grain, bone or a dragonfly wing. Each point measures distance with the same ellipse instead of a circle, so with **Amount** at 3× relaxed cells are about three times as long as they are wide, along **Direction** (0° is right, 90° is up). Edges stay straight, so holes, rounded corners and cut files work as before. It works with every placement (a stretched honeycomb with Hex), every gradient including Picture, and imported shapes.
 
+**Follows** chooses what the stretch follows. Each choice has its own controls:
+
+| Follows | What cells do |
+| --- | --- |
+| One direction | All stretch the same way, along **Direction**. |
+| Around a centre | Point out from **Centre X**, **Centre Y** like rays (**Turn** 0°), wrap round it in rings (90°), or spiral in between. |
+| Saddle | Come in along **Direction** and leave at right angles to it, round the centre. |
+| Waves | Run along **Direction**, swinging from side to side: **Waves** along the sheet's longer side, **Swing** degrees each way. |
+| Swirl grid | Follow a grid of swirls, each turning the other way from its neighbours (**Swirls** along the longer side). |
+| Noise | Follow directions that wander smoothly; **Detail** sets how often they turn, and **New flow** picks another field. |
+| Swirling noise | Follow eddies that wrap round each other, like smoke or marbling, with **Detail** and **New flow**. |
+| Along the veins | Line up with the nearest vein. Needs veins on. |
+| Along the picture | Run along the density picture's contours, where dark meets light, and stay round in flat areas. Needs a picture, though the gradient itself can be off. |
+
+With a field, each place has its own ellipse, turned to follow it. Cells tile the sheet exactly and never cross themselves; their walls are straight, with a slight bend where the field turns sharply. In testing, 1,200 relaxed cells at 3× lined up within 1.1–1.8° of the field, and were about as even in size as with one direction. A field that turns faster than cells that size can follow, such as a vortex's eye, a swirl's centre or busy noise with few cells, leaves the cells there round. The hint under the controls says how much of the sheet follows the field, and when that's under 60 % it suggests lowering the detail or adding cells.
+
 Long cells leave long, thin webs between them, so a stretched panel is stiffer along the stretch than across it, and thin webs can break; in Holes style, check the narrowest hole in the measurements. With Stretch on, **Minimum spacing** is the spacing before stretching: points end up farther apart along the stretch and closer across it.
 
 ### Veins
@@ -137,10 +153,10 @@ Long cells leave long, thin webs between them, so a stretched panel is stiffer a
 | Veins | What it does |
 | --- | --- |
 | Wing | Veins follow a flow from **Start from** (the middle of a side, or the centre) out to the far edges. They run side by side near the start, join only where they'd touch, and never cross, like a dragonfly's or a grasshopper's wing. |
-| Leaf | Veins grow from the start toward the edges and branch as they go (space colonization). The branches that feed the most tips are the thickest. |
+| Leaf | Veins grow out from the start as the leaf's edge grows, and join where they meet, closing loops like a leaf's finer veins (closed venation). No vein stops in the middle of a region. The veins that feed the most loops are the thickest. Turn off **Join into loops** for veins that branch like a tree and run on to the edge, as before 1.9.0. |
 | Imported | Open lines from an SVG: lines or paths with a stroke and no fill. **Import veins…** places them by the file's page, or by its outline if it has one. Importing a sheet shape whose file also has open lines makes those lines its veins. |
 
-**Vein ends** sets how many veins reach the edge (Wing) or how many branch ends there are (Leaf). **Vein width** is their width at the start, and **Taper** how much narrower their far ends are. In Holes style a vein is solid, with the web added on each side; in Lines style it's drawn solid, and cut files cut round it.
+**Vein ends** sets how many veins reach the edge (Wing) or how many branch ends there are (Leaf without loops). With loops it's **Loops**: about how many regions the veins close off. **Vein width** is their width at the start, and **Taper** how much narrower their far ends are. In Holes style a vein is solid, with the web added on each side; in Lines style it's drawn solid, and cut files cut round it.
 
 **Walls follow cell size** (Style tab) thins the web between smaller cells, as a wing's veins thin out where its cells are small: at 100 %, cells half as wide get a web half as thick, down to 15 %. In Lines style it varies the line width in the view, PNG and artwork SVG; laser files keep hairlines.
 
@@ -178,8 +194,9 @@ Every export holds what the view shows: the **Sites**, **Edges** or **Holes**, a
 | Include the sheet outline | Adds the sheet edge as the outer cut in Laser SVG and DXF. |
 | Gradient, Strength, Direction, Small cells at | The density gradient: None, Linear, Radial or Picture, how strong it is and which way it runs. |
 | Choose picture…, Replace…, Contrast, Softness, Picture size, Scale, Move right, Move down | The Picture gradient's picture, how it's read, and its size and place on the sheet (see Picture gradient above). |
-| Stretch: Amount, Direction | How many times longer than wide cells are (Off, or 1.1–5×), and which way (0° is right, 90° is up). |
-| Veins, Vein ends, Start from, Vein width, Taper, Import veins… | Veins that split the sheet into regions (see Veins above). |
+| Stretch: Amount, Follows, Direction | How many times longer than wide cells are (Off, or 1.1–5×), what they follow, and which way (0° is right, 90° is up). |
+| Centre X, Centre Y, Turn, Waves, Swing, Swirls, Detail, New flow | The settings of the field the stretch follows (see Stretch above). |
+| Veins, Join into loops, Loops or Vein ends, Start from, Vein width, Taper, Import veins… | Veins that split the sheet into regions (see Veins above). |
 | Walls follow cell size | Thinner web or lines between smaller cells (0–100 %). |
 | Sites, Edges or Holes, Delaunay, Picture | Show or hide each part of the design, in the view and in every export (the picture stays out of cut files). |
 
@@ -209,9 +226,10 @@ On Windows and Linux, use Ctrl for ⌘. Space pans, as in most design tools, rat
 - **Even placement** uses Bridson's Poisson-disk sampling with a spacing that varies with the gradient. For a set count it tightens the spacing until there are enough points, then drops the extra few at random.
 - **Relaxation** is Lloyd's method: each point moves to the centre of its cell. With a gradient the centre is weighted by the density squared, which is what keeps the gradient through hundreds of steps. Auto-relax counts the points as settled, and waits, when no point moves more than 1/2,000 of the typical spacing in a step.
 - **Picture gradient.** The picture is reduced to at most 512 pixels a side and turned grey by brightness (Rec. 709). Its darkest pixel becomes black and its lightest white, then Contrast, Softness (a three-pass box blur close to a Gaussian) and Small cells at give each pixel a tone from 0 to 1, and its density is Strength to the power of the tone. Relaxing weights each cell's centre by the density squared, as for the other gradients, but integrates it exactly over the picture's pixels instead of sampling it: by Green's theorem, each cell's weight and centre come from running sums along the pixel rows, taken around its outline (Secord, *Weighted Voronoi Stippling*, 2002). So sharp edges in the picture stay sharp and the points settle. On a white-to-black ramp at 9×, 2,000 relaxed cells come within 3 % of the expected count in every tenth of the width.
-- **Stretch.** One ellipse for every point (a Mahalanobis distance, as in Feng et al., *Cellular topology optimization on differentiable Voronoi diagrams*, 2022) turns the diagram into an ordinary Voronoi diagram in a squeezed copy of the sheet. The app squeezes the points and the pattern area by 1/√s along the direction and stretches them by √s across it, which keeps areas, builds and clips the cells there, then maps them back. New points are placed evenly in the squeezed copy, so they start stretched, and relaxing still moves each point to its cell's centre, which is what lowers the energy for any fixed ellipse. At 3× along 30°, relaxed cells measure 3.03 times as long as wide, along 30.0°. A different ellipse at each point would curve the edges, which cut files can't hold, so the stretch is the same across the sheet.
-- **Veins.** Wing veins are streamlines of a harmonic field: 1 in a small disc at the start, relaxed to Laplace's equation (SOR on a 200-cell grid). The edge nearest the start (30 % of the way out) is a wall the flow runs along, and the rest is where it leaves, so veins run beside the edge near their start and fan out to the far edges. Veins are traced from evenly spaced points on the far edges back toward the start; one that comes within a few grid steps of a vein already drawn joins it, a little nearer the start, so it branches at a shallow angle. Leaf veins use space colonization (Runions et al., 2005): growth toward Poisson-disk targets, pruned to the branches that feed the most tips, with tips carried on to the edge or the nearest vein so they close off regions. Veins become strips (Clipper2 offsets, simplified to 10 µm) taken out of the pattern; each piece left is filled, relaxed and clipped on its own.
-- **Holes.** Each cell is convex, so it is shrunk by half the web plus the corner radius, then grown back by the radius with arcs. That gives exact round corners with no self-intersections. Small cells get the largest radius that fits.
+- **Stretch.** One ellipse for every point (a Mahalanobis distance, as in Feng et al., *Cellular topology optimization on differentiable Voronoi diagrams*, 2022) turns the diagram into an ordinary Voronoi diagram in a squeezed copy of the sheet. The app squeezes the points and the pattern area by 1/√s along the direction and stretches them by √s across it, which keeps areas, builds and clips the cells there, then maps them back. New points are placed evenly in the squeezed copy, so they start stretched, and relaxing still moves each point to its cell's centre, which is what lowers the energy for any fixed ellipse. At 3× along 30°, relaxed cells measure 3.03 times as long as wide, along 30.0°. With one direction this is exact, and the app keeps that path.
+- **Stretch that follows a field.** With a different ellipse at each place the exact cells would have curved edges, so the app builds them from straight pieces. Points are joined into Delaunay triangles, and each edge is flipped until it's Delaunay in the average ellipse of its four points. Each cell's corners are its triangles' circumcentres, each found in that triangle's average ellipse and kept inside the triangle, so a cell's corners stay in order round its point. Relaxing moves each point to (∫M)⁻¹ ∫M·x over its cell, where M is the ellipse at x. That is the Lloyd step that lowers the energy when the ellipse varies, and the plain centre would drift points into a vortex's eye. For relaxing only, each wall also bends twice, where its two points are equally far in the ellipse there. In a curving field a straight wall gives part of each cell to its outer neighbour, so relaxing would crowd cells toward the curve's centre. Against Lloyd's method done exactly on pixels, straight walls left points 2.2 times as dense near a vortex's eye as farther out; with the bends they matched it within 10 %. Drawings and cut files keep a wall's bends only where one moves the wall by more than 6 % of its length, as where the nearest vein changes, so cut files grow by about a third rather than tripling. The field is read with a structure tensor, so a direction and its reverse count the same. The direction comes from a patch about one cell spacing across. The stretch fades over a 2.5-spacing patch wherever the directions go most of the way round, as at an eye or a saddle. New points are placed evenly in each place's own ellipse. With a field, Auto-relax counts the points as settled when 99 % of them move less than 1/100 of the spacing in a step. A few points keep trading a little area where two triangles are close to swapping diagonals.
+- **Veins.** Wing veins are streamlines of a harmonic field: 1 in a small disc at the start, relaxed to Laplace's equation (SOR on a 200-cell grid). The edge nearest the start (30 % of the way out) is a wall the flow runs along, and the rest is where it leaves, so veins run beside the edge near their start and fan out to the far edges. Veins are traced from evenly spaced points on the far edges back toward the start; one that comes within a few grid steps of a vein already drawn joins it, a little nearer the start, so it branches at a shallow angle. Leaf veins use space colonization (Runions et al., *Modeling and visualization of leaf venation patterns*, 2005; Jason Webb's JavaScript version). With loops (closed venation), sources are scattered inside the leaf and spaced along its edges, and each switches on when a copy of the outline, growing out from the start, passes it, as a leaf adds veins near its growing margin. Each source pulls on its relative neighbourhood of vein points: a point counts unless another point is nearer both it and the source. So veins from several sides head for one source, and once all of them have arrived they join there, closing a loop. Ends left inside the leaf are trimmed back, and widths follow the pipe model on the growth tree. Without loops, growth heads for Poisson-disk targets and is pruned to the branches that feed the most tips, with tips carried on to the edge or the nearest vein so they close off regions. Veins become strips (Clipper2 offsets, simplified to 10 µm) taken out of the pattern; each piece left is filled, relaxed and clipped on its own.
+- **Holes.** A convex cell is shrunk by half the web plus the corner radius, then grown back by the radius with arcs. That gives exact round corners with no self-intersections. Small cells get the largest radius that fits. Cells are convex except with a field stretch, where 3–4 % come out slightly concave, and where an imported outline clips them. Those go through Clipper2's offsets instead.
 - **Imported shapes.** [Clipper2](https://github.com/PolyClipping/Clipper2), through [clipper2-ts](https://github.com/countertype/clipper2-ts), merges the outlines (even-odd), shrinks them by the border with round corners, and clips the cells that cross the outline. A grid of the outline's edges makes "is this point inside?" fast enough for Poisson-disk sampling. Cells wholly inside keep the exact method above; clipped cells can be concave, so their holes come from Clipper's offsets, with rounded corners drawn as short segments within 5 µm.
 - **Determinism.** A seeded random generator (mulberry32) makes every pattern repeatable from its seed and settings.
 - **Background work.** Making and relaxing points runs in a Web Worker, so the page stays responsive.
@@ -257,6 +275,20 @@ Stretch, measured the same way:
 
 Directions off the axes are slower at high counts because the cells along the border are trimmed as if the sheet were an imported outline.
 
+Stretch that follows a field, measured the same way (3×; Node for one step):
+
+| Task | Result |
+| --- | --- |
+| Auto-relax speed, Lines, 2,500 cells | one direction 45.0, rings 24.2, swirling noise 20.3 steps/s |
+| Auto-relax speed, Lines, 10,000 cells | one direction 23.1, rings 5.8, swirling noise 4.5 steps/s |
+| Auto-relax until settled, 1,200 cells in rings | 98 steps, 3.0 s, cells as even as at the start (smallest 1/1.3 of the mean) |
+| One relax step (Node), 1,200 cells | 13–16 ms with a field, 21 ms along the veins, 2.3 ms with one direction |
+| Cells that line up, 1,200 cells after 300 steps | within 1.1–1.8° of the field, 2.7–3.0 times as long as wide; 0 cells cross themselves, the sheet covered exactly |
+| Share of the sheet that follows, default field settings | 300 cells: rings 83 %, waves 78 %, swirl grid 82 %, noise 69 %, swirling noise 100 %, along wing veins 91 %; 1,200 cells: 81–100 % |
+| Cut files, 1,200 holes in rings | laser SVG 346–382 kB, DXF 0.97–1.11 MB (one direction 268 kB, 714 kB) |
+
+Leaf veins with loops: 27–76 ms to grow 4 to 60 loops and split the sheet (Node); in the app a new pattern 0.5–0.65 s after a Loops change, with 1,200 cells. Asking for 16, 30 and 60 loops gave 18, 28 and 55 regions.
+
 Veins, measured the same way (Node, one relax step / one rebuild of the drawing; and Auto-relax in the app):
 
 | Task | Result |
@@ -275,6 +307,7 @@ Patterns up to a few thousand cells stay smooth. With Auto-relax on while you dr
 - Cut files are not reordered to shorten laser travel.
 - The live design is kept in the browser's local storage; clearing site data removes it. Save a project file to keep work. A density picture adds about 260 kB to it.
 - Leaf veins come from a fixed set of targets for each setting, so Shuffle changes the cells but not the veins.
+- A field that turns within a few cells' length can't be followed by cells that size: they stay round there, and the hint says how much of the sheet follows. Relaxing with a field is two to five times slower than with one direction.
 - Photoshop files, PDFs and camera raw files can't be used as pictures; export a JPG or PNG. JPEG XL opens only where the browser reads it.
 
 ## Development

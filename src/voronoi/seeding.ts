@@ -3,7 +3,8 @@
 import { densityField, densityPeak, integrateDensity, type DensityField, type DensitySettings } from './density'
 import { createRng, type Rng } from './random'
 import { clampToRegion, contains, regionArea, regionHeight, regionWidth, type Region } from './region'
-import { pointsToSheet, stretchFrame, toSheet, workRegion, type Stretch } from './stretch'
+import { pointsToSheet, stretchFrame, toSheet, varyingField, workRegion, type Stretch } from './stretch'
+import { metricAt, metricDistance2, metricGrid, metricStep, type Sym } from './field'
 
 export type Placement = 'random' | 'even' | 'hex' | 'square'
 export type SeedSettings = {
@@ -19,6 +20,8 @@ export type SeedSettings = {
 }
 // A density to place points by: its value anywhere and its highest value, for rejection sampling.
 type Field = { at: DensityField; peak: number }
+// A stretch that follows a field: spacing is measured in each place's ellipse. max: the largest stretch.
+type Metric = { at: (x: number, y: number) => Sym; max: number }
 const fieldOf = (density: DensitySettings | Field, region: Region): Field =>
   'at' in density ? density : { at: densityField(density, region), peak: densityPeak(density) }
 // spacing: the spacing actually used (0 for random), so turning Auto spacing off keeps the same look.
@@ -33,6 +36,13 @@ const POISSON_FILL = 0.62
 export function seedPoints(settings: SeedSettings, region: Region): SeedResult {
   const f = stretchFrame(settings.stretch)
   const field = fieldOf(settings.density, region)
+  const varying = varyingField(settings.stretch)
+  if (varying) {
+    // Even placement spaced in the field's own ellipses, so the points start out stretched along it.
+    const count = Math.max(2, Math.min(MAX_POINTS, Math.round(settings.count)))
+    const grid = metricGrid(varying, region, typicalSpacing(region, count))
+    return seedIn(settings, region, field, { at: (x, y) => metricAt(grid, x, y), max: varying.amount })
+  }
   if (!f) return seedIn(settings, region, field)
   const work = seedIn(settings, workRegion(region, f), { at: (x, y) => field.at(...toSheet(f, x, y)), peak: field.peak })
   const points = pointsToSheet(work.points, f)
@@ -42,12 +52,12 @@ export function seedPoints(settings: SeedSettings, region: Region): SeedResult {
   return { ...work, points }
 }
 
-function seedIn(settings: SeedSettings, region: Region, field: Field): SeedResult {
+function seedIn(settings: SeedSettings, region: Region, field: Field, metric?: Metric): SeedResult {
   const rng = createRng(settings.seed)
   const count = Math.max(2, Math.min(MAX_POINTS, Math.round(settings.count)))
   switch (settings.placement) {
     case 'random': return { points: randomPoints(count, region, field, rng), capped: false, spacing: 0 }
-    case 'even': return evenPoints(settings, count, region, rng, field)
+    case 'even': return evenPoints(settings, count, region, rng, field, metric)
     case 'hex': return gridPoints(settings, count, region, rng, true)
     case 'square': return gridPoints(settings, count, region, rng, false)
   }
@@ -73,17 +83,20 @@ function randomPoints(count: number, region: Region, density: Field, rng: Rng): 
 }
 
 // Bridson's Poisson-disk sampling with a spacing that can vary across the sheet.
-export function poissonDisk(region: Region, spacing: number, tries: number, densityIn: DensitySettings | Field, rng: Rng, limit = MAX_POINTS): SeedResult {
+export function poissonDisk(region: Region, spacing: number, tries: number, densityIn: DensitySettings | Field, rng: Rng, limit = MAX_POINTS, metric?: Metric): SeedResult {
   const density = fieldOf(densityIn, region)
   const field = density.at, top = density.peak
   const radius = (x: number, y: number) => spacing / Math.sqrt(field(x, y))
-  const rMin = spacing / Math.sqrt(top), rMax = spacing
+  // In a field's ellipses, points can sit √s nearer across the stretch and √s farther along it.
+  const s = metric ? Math.max(1, metric.max) : 1
+  const rMin = spacing / Math.sqrt(top) / Math.sqrt(s), rMax = spacing * Math.sqrt(s)
+  const apart2 = (m: Sym | null, dx: number, dy: number) => (m ? metricDistance2(m, dx, dy) : dx * dx + dy * dy)
   const cell = rMin / Math.SQRT2
   const w = regionWidth(region), h = regionHeight(region)
   // No spacing means no region to fill. Without this, doubling a zero spacing below would never end.
   if (!(spacing > 0) || !Number.isFinite(spacing)) return { points: new Float64Array(), capped: false, spacing: 0 }
   const gw = Math.max(1, Math.ceil(w / cell)), gh = Math.max(1, Math.ceil(h / cell))
-  if (gw * gh > 40_000_000) return poissonDisk(region, spacing * 2, tries, density, rng, limit) // keeps memory bounded
+  if (gw * gh > 40_000_000) return poissonDisk(region, spacing * 2, tries, density, rng, limit, metric) // keeps memory bounded
   const grid = new Int32Array(gw * gh).fill(-1)
   const reach = Math.ceil(rMax / cell)
   const xs: number[] = [], ys: number[] = [], active: number[] = []
@@ -91,13 +104,13 @@ export function poissonDisk(region: Region, spacing: number, tries: number, dens
   const gy = (y: number) => Math.max(0, Math.min(gh - 1, Math.floor((y - region.y0) / cell)))
   const fits = (x: number, y: number) => {
     const r = radius(x, y), r2 = r * r
+    const m = metric ? metric.at(x, y) : null
     const cx = gx(x), cy = gy(y)
     for (let j = Math.max(0, cy - reach); j <= Math.min(gh - 1, cy + reach); j++) {
       for (let i = Math.max(0, cx - reach); i <= Math.min(gw - 1, cx + reach); i++) {
         const k = grid[j * gw + i]
         if (k < 0) continue
-        const dx = xs[k] - x, dy = ys[k] - y
-        if (dx * dx + dy * dy < r2) return false
+        if (apart2(m, xs[k] - x, ys[k] - y) < r2) return false
       }
     }
     return true
@@ -107,7 +120,7 @@ export function poissonDisk(region: Region, spacing: number, tries: number, dens
   const add = (x: number, y: number) => {
     grid[gy(y) * gw + gx(x)] = xs.length
     active.push(xs.length); xs.push(x); ys.push(y)
-    const d = 2 * radius(x, y), k = Math.ceil(d / cell), cx = gx(x), cy = gy(y)
+    const d = 2 * radius(x, y) * Math.sqrt(s), k = Math.ceil(d / cell), cx = gx(x), cy = gy(y)
     for (let j = Math.max(0, cy - k); j <= Math.min(gh - 1, cy + k); j++) {
       const dy = region.y0 + (j + 0.5) * cell - y
       for (let i = Math.max(0, cx - k); i <= Math.min(gw - 1, cx + k); i++) {
@@ -130,7 +143,8 @@ export function poissonDisk(region: Region, spacing: number, tries: number, dens
       let placed = false
       for (let t = 0; t < tries; t++) {
         const angle = rng() * Math.PI * 2, dist = r * (1 + rng())
-        const x = xs[base] + Math.cos(angle) * dist, y = ys[base] + Math.sin(angle) * dist
+        const [ox, oy] = metric ? metricStep(metric.at(xs[base], ys[base]), angle, dist) : [Math.cos(angle) * dist, Math.sin(angle) * dist]
+        const x = xs[base] + ox, y = ys[base] + oy
         if (contains(region, x, y) && fits(x, y)) { add(x, y); placed = true; break }
       }
       if (!placed) { active[slot] = active[active.length - 1]; active.pop() }
@@ -152,11 +166,12 @@ export function poissonDisk(region: Region, spacing: number, tries: number, dens
   // wherever no point is within three times the spacing. That's farther than growth reaches, so a normal
   // fill's small gaps along the edge are left as they were.
   const far = (x: number, y: number) => {
-    const d = 3 * radius(x, y), k = Math.ceil(d / cell), cx = gx(x), cy = gy(y)
+    const d = 3 * radius(x, y), k = Math.ceil((d * Math.sqrt(s)) / cell), cx = gx(x), cy = gy(y)
+    const m = metric ? metric.at(x, y) : null
     for (let j = Math.max(0, cy - k); j <= Math.min(gh - 1, cy + k); j++) {
       for (let i = Math.max(0, cx - k); i <= Math.min(gw - 1, cx + k); i++) {
         const q = grid[j * gw + i]
-        if (q >= 0 && (xs[q] - x) ** 2 + (ys[q] - y) ** 2 < d * d) return false
+        if (q >= 0 && apart2(m, xs[q] - x, ys[q] - y) < d * d) return false
       }
     }
     return true
@@ -182,22 +197,22 @@ export function poissonDisk(region: Region, spacing: number, tries: number, dens
   return { points, capped, spacing }
 }
 
-function evenPoints(settings: SeedSettings, count: number, region: Region, rng: Rng, density: Field): SeedResult {
+function evenPoints(settings: SeedSettings, count: number, region: Region, rng: Rng, density: Field, metric?: Metric): SeedResult {
   const tries = Math.max(1, Math.min(100, Math.round(settings.tries)))
-  if (!settings.autoSpacing) return poissonDisk(region, Math.max(1e-3, settings.spacing), tries, density, rng)
+  if (!settings.autoSpacing) return poissonDisk(region, Math.max(1e-3, settings.spacing), tries, density, rng, MAX_POINTS, metric)
   // Pick the spacing that should give the count, then tighten it until there are enough points.
   const mass = integrateDensity(density.at, region, (x, y) => contains(region, x, y))
   let spacing = Math.sqrt((POISSON_FILL * 2 / Math.sqrt(3)) * mass / count)
-  let best = poissonDisk(region, spacing, tries, density, rng, count * 3)
+  let best = poissonDisk(region, spacing, tries, density, rng, count * 3, metric)
   // Thin shapes hold more points than their area suggests. A sample that hit the limit may have left pieces
   // unseeded, so widen the spacing until it fits.
   for (let round = 0; round < 6 && best.capped; round++) {
     spacing *= Math.SQRT2
-    best = poissonDisk(region, spacing, tries, density, rng, count * 3)
+    best = poissonDisk(region, spacing, tries, density, rng, count * 3, metric)
   }
   for (let round = 0; round < 4 && best.points.length && best.points.length / 2 < count; round++) {
     spacing *= Math.sqrt((best.points.length / 2) / count) * 0.97
-    best = poissonDisk(region, spacing, tries, density, rng, count * 3)
+    best = poissonDisk(region, spacing, tries, density, rng, count * 3, metric)
   }
   return { points: trim(best.points, count, rng), capped: false, spacing: best.spacing }
 }

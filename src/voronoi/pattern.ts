@@ -15,8 +15,10 @@ export type PatternSettings = {
   cellStyle: CellStyle; web: number; cornerRadius: number; minHole: number
   showDelaunay: boolean
   stretch?: number; stretchAngle?: number // see stretch.ts; 1 or none is off
+  stretchSpec?: Stretch | null // the full stretch, with any field it follows (stretchOf in settings.ts); else from the two above
   // Veins (see veins.ts). veinLines: imported veins, scaled 0–1 to the sheet's box. veinTaper: 0–90 %.
   veins?: VeinStyle; veinCount?: number; veinStart?: VeinStart; veinWidth?: number; veinTaper?: number; veinLines?: ImportedVeins | null
+  veinLoops?: boolean // Leaf veins that join into loops
   // 0–100 %: walls between smaller cells get thinner (Holes webs, and lines in the view, PNG and artwork SVG).
   wallsFollow?: number
 }
@@ -45,13 +47,13 @@ export type Geometry = {
 // The region cells fill. In Holes style the region reaches half a web past the border, so after the holes
 // shrink by half a web the solid frame is exactly the border.
 type RegionSettings = Pick<PatternSettings, 'width' | 'height' | 'shape' | 'customShape' | 'border' | 'cellStyle' | 'web'>
-  & Partial<Pick<PatternSettings, 'veins' | 'veinCount' | 'veinStart' | 'veinWidth' | 'veinTaper' | 'veinLines'>>
+  & Partial<Pick<PatternSettings, 'veins' | 'veinCount' | 'veinStart' | 'veinWidth' | 'veinTaper' | 'veinLines' | 'veinLoops'>>
 export function patternRegion(s: RegionSettings): Region {
   const inset = s.cellStyle === 'holes' ? Math.max(0, s.border - s.web / 2) : s.border
   const region = insetRegion(sheetRegion(s.width, s.height, s.shape, s.customShape), inset)
   if (!s.veins || s.veins === 'none') return region
   return veinedRegion(region, {
-    style: s.veins, count: s.veinCount ?? 8, start: s.veinStart ?? 'left', width: s.veinWidth ?? 1, taper: (s.veinTaper ?? 0) / 100,
+    style: s.veins, count: s.veinCount ?? 8, start: s.veinStart ?? 'left', width: s.veinWidth ?? 1, taper: (s.veinTaper ?? 0) / 100, loops: s.veinLoops ?? false,
     lines: s.veins === 'imported' && s.veinLines ? veinLinesAt(s.veinLines, s.width, s.height) : null,
   })
 }
@@ -69,7 +71,8 @@ export function veinLinesAt(v: ImportedVeins, width: number, height: number): Po
 export function buildGeometry(points: Float64Array, s: PatternSettings): Geometry {
   const sheet = sheetRegion(s.width, s.height, s.shape, s.customShape)
   const region = patternRegion(s)
-  const stretch: Stretch | null = (s.stretch ?? 1) > 1 ? { amount: s.stretch ?? 1, angle: s.stretchAngle ?? 0 } : null
+  const stretch: Stretch | null = s.stretchSpec !== undefined ? s.stretchSpec
+    : (s.stretch ?? 1) > 1 ? { amount: s.stretch ?? 1, angle: s.stretchAngle ?? 0 } : null
   const { cells, internal } = buildDiagram(points, region, stretch)
   // Walls follow cell size: each cell's walls scale with its size against the larger cells', to a power of
   // 0–1, so at 100 % a cell half as wide has walls half as thick (down to 15 %).

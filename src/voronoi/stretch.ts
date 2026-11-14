@@ -9,10 +9,12 @@ import { ellipsePolygon, type Polygon, type Segment, type Vec } from './geometry
 import type { Cells } from './diagram'
 import { regionCenter, regionHeight, regionWidth, type Region } from './region'
 import { boxOf } from './shape'
+import type { FieldSpec } from './field'
 
 // amount: how many times longer than wide a relaxed cell is (1 is off). angle: the long direction in degrees,
-// 0 pointing right and 90 up.
-export type Stretch = { amount: number; angle: number }
+// 0 pointing right and 90 up. field: a direction that varies over the sheet (see field.ts); without one, or
+// with One direction, the stretch is the same everywhere and takes the exact path here.
+export type Stretch = { amount: number; angle: number; field?: FieldSpec | null }
 // The squeeze into work space is [[a, b], [b, c]] and its inverse [[ia, ib], [ib, ic]]. Both are symmetric
 // with determinant 1. axis: b is exactly 0, so rectangles and ellipses stay rectangles and ellipses.
 export type Frame = { a: number; b: number; c: number; ia: number; ib: number; ic: number; axis: boolean; key: string }
@@ -20,8 +22,12 @@ export type Frame = { a: number; b: number; c: number; ia: number; ib: number; i
 export const MAX_STRETCH = 5
 const ELLIPSE_SEGMENTS = 256
 
+// The field a stretch follows, when it varies over the sheet.
+export const varyingField = (s?: Stretch | null): FieldSpec | null =>
+  s && s.amount > 1 + 1e-9 && s.field && s.field.kind !== 'fixed' ? s.field : null
+
 export function stretchFrame(s?: Stretch | null): Frame | null {
-  if (!s || !(s.amount > 1 + 1e-9) || !Number.isFinite(s.angle)) return null
+  if (!s || !(s.amount > 1 + 1e-9) || !Number.isFinite(s.angle) || varyingField(s)) return null
   const r = Math.min(MAX_STRETCH, s.amount)
   const turn = ((s.angle % 180) + 180) % 180
   // The long direction, with y pointing down. Right angles are exact so the frame stays axis-aligned.

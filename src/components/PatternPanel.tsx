@@ -1,12 +1,14 @@
 import { memo } from 'react'
-import { RANGES, type Settings } from '../lib/settings'
+import { fieldReady, fieldShare, RANGES, type Settings } from '../lib/settings'
 import { formatLength } from '../lib/units'
-import { Button, DraftNumber, LengthField, NumberField, Section, Segmented, SliderField, SwitchField, type Option } from './Controls'
+import { Button, DraftNumber, LengthField, NumberField, Section, Segmented, SelectField, SliderField, SwitchField, type Option } from './Controls'
 import type { Placement } from '../voronoi/seeding'
 import type { DensityMode } from '../voronoi/density'
 import type { PictureFit } from '../voronoi/picture'
 import type { VeinStart, VeinStyle } from '../voronoi/veins'
 import { PICTURE_TYPES } from '../lib/pictureFile'
+import type { FieldKind } from '../voronoi/field'
+import { randomSeed } from '../voronoi/random'
 
 export type Change = (patch: Partial<Settings>, key?: string) => void
 
@@ -35,7 +37,7 @@ const FITS: Option<PictureFit>[] = [
 const veinStyles = (imported: boolean): Option<VeinStyle>[] => [
   { value: 'none', label: 'None', tip: 'No veins: one pattern across the whole sheet.' },
   { value: 'wing', label: 'Wing', tip: 'Veins fan out from the start to the far edges and branch where they bunch up, like an insect wing’s main veins.' },
-  { value: 'leaf', label: 'Leaf', tip: 'Veins grow from the start toward the edges and branch as they go, like a leaf’s veins (space colonization).' },
+  { value: 'leaf', label: 'Leaf', tip: 'Veins grow out from the start and branch as they go, like a leaf’s veins (space colonization). They can join into loops.' },
   { value: 'imported', label: 'Imported', tip: 'The open lines from an SVG you imported.', unavailable: !imported && 'Import an SVG with open lines first, with Import veins… below, or a sheet shape whose file has open lines.' },
 ]
 const STARTS: Option<VeinStart>[] = [
@@ -45,10 +47,33 @@ const STARTS: Option<VeinStart>[] = [
   { value: 'bottom', label: 'Bottom', tip: 'Veins start at the middle of the bottom.' },
   { value: 'centre', label: 'Centre', tip: 'Veins spread out from the centre in every direction.' },
 ]
-const VEIN_HINT: Record<Exclude<VeinStyle, 'none'>, string> = {
+const VEIN_HINT: Record<Exclude<VeinStyle, 'none'> | 'loops', string> = {
   wing: 'Each region between veins gets its own cells, as in an insect wing. Veins run side by side near the start and spread to the far edges.',
   leaf: 'Each region between veins gets its own cells. The veins that feed the most branches are the thickest.',
+  loops: 'Veins grow out from the start as the leaf’s edge grows, and join where they meet, so they close loops like a leaf’s fine veins. Each loop gets its own cells; the veins that feed the most loops are the thickest.',
   imported: 'Each region between your lines gets its own cells. Lines are as wide as Vein width at their start, narrowing by Taper.',
+}
+// What the stretch follows. The two that need something else say so in the list.
+const stretchFields = (s: Settings): Option<FieldKind>[] => [
+  { value: 'fixed', label: 'One direction', tip: 'Every cell stretches the same way, set by Direction.' },
+  { value: 'centre', label: 'Around a centre', tip: 'Cells point out from a centre like rays, wrap round it in rings, or spiral in between.' },
+  { value: 'saddle', label: 'Saddle', tip: 'Cells come in along one axis and leave along the other, as round a saddle point.' },
+  { value: 'wave', label: 'Waves', tip: 'Cells follow wavy lines, like ripples or wood grain.' },
+  { value: 'cells', label: 'Swirl grid', tip: 'A grid of swirls, each turning the other way from its neighbours, like convection cells.' },
+  { value: 'noise', label: 'Noise', tip: 'Directions wander smoothly across the sheet, like a flow field.' },
+  { value: 'curl', label: 'Swirling noise', tip: 'Smooth noise turned into eddies that wrap round each other, like smoke or marbling.' },
+  { value: 'veins', label: 'Along the veins', tip: 'Cells line up with the nearest vein.', unavailable: s.veins === 'none' && 'turn on veins first' },
+  { value: 'picture', label: 'Along the picture', tip: 'Cells run along the density picture’s contours, where dark meets light.', unavailable: !s.densityPicture && 'choose a picture first' },
+]
+const FIELD_HINT: Record<Exclude<FieldKind, 'fixed'>, string> = {
+  centre: '0° turn sends cells out from the centre like rays, 90° wraps them round it in rings, and in between makes a spiral.',
+  saddle: 'Cells come in along Direction and leave at right angles to it.',
+  wave: 'Cells run along Direction, swinging from side to side.',
+  cells: 'Neighbouring swirls turn opposite ways, and cells between them run straight.',
+  noise: 'Directions wander smoothly; higher Detail turns more often. Cells too big to follow a turn stay round, so finer detail needs more cells.',
+  curl: 'Eddies wrap round each other; higher Detail makes them smaller. Cells too big to follow an eddy stay round, so finer detail needs more cells.',
+  veins: 'Cells near a vein run along it.',
+  picture: 'The picture is placed as under Density. Cells in flat areas stay round.',
 }
 const size = (w: number, h: number) => `${w.toLocaleString()} × ${h.toLocaleString()} px`
 
@@ -58,6 +83,9 @@ export const PatternPanel = memo(function PatternPanel({ s, change, stale, onApp
   exactSpacing: () => number; capped: boolean; onShuffle: () => void; onChoosePicture: () => void; onImportVeins: () => void
 }) {
   const grid = s.placement === 'hex' || s.placement === 'square'
+  const ready = fieldReady(s)
+  const loops = s.veins === 'leaf' && s.veinLoops
+  const share = ready ? fieldShare(s, actualCount || s.count) : null
   const spacingOff = s.placement === 'random' && 'Random placement has no spacing to set.'
   const countLocked = !s.autoSpacing && s.placement !== 'random' && 'The spacing sets the count. Turn on Auto spacing to choose a count instead.'
   const densityOff = grid && 'Gradients work with Random and Even placement. Grids stay regular.'
@@ -158,10 +186,43 @@ export const PatternPanel = memo(function PatternPanel({ s, change, stale, onApp
       <SliderField label="Amount" name="Stretch amount" value={s.stretch} min={RANGES.stretch[0]} max={RANGES.stretch[1]} step={0.1}
         format={v => (v <= 1 ? 'Off' : `${v.toFixed(1)}×`)} tip="Make cells longer in one direction, like wood grain or a dragonfly wing. At 2× relaxed cells are about twice as long as they are wide."
         onChange={stretch => change({ stretch: Math.round(stretch * 10) / 10 }, 'stretch')} />
-      <SliderField label="Direction" name="Stretch direction" value={s.stretchAngle} min={0} max={175} step={5} format={v => `${v}°`}
-        unavailable={s.stretch <= 1 && 'Turn the amount up from Off first.'}
-        tip="The direction cells get longer in. 0° is right, 90° is up." onChange={stretchAngle => change({ stretchAngle }, 'stretchAngle')} />
-      {s.stretch > 1 && <p className="hint">Each point measures distance with an ellipse instead of a circle, so cells stay straight-edged but grow longer along {s.stretchAngle}°. Long cells leave long, thin webs between them: in Holes style, check the narrowest hole.</p>}
+      <SelectField label="Follows" name="Stretch follows" options={stretchFields(s)} value={s.stretchField}
+        unavailable={s.stretch <= 1 && 'Turn the amount up from Off first.'} onChange={stretchField => change({ stretchField }, 'stretchField')} />
+      {(!ready || s.stretchField === 'saddle' || s.stretchField === 'wave') &&
+        <SliderField label="Direction" name="Stretch direction" value={s.stretchAngle} min={0} max={175} step={5} format={v => `${v}°`}
+          unavailable={s.stretch <= 1 && 'Turn the amount up from Off first.'}
+          tip={s.stretchField === 'saddle' && ready ? 'The axis cells come in along. 0° is right, 90° is up.' : s.stretchField === 'wave' && ready ? 'The way the waves run. 0° is right, 90° is up.' : 'The direction cells get longer in. 0° is right, 90° is up.'}
+          onChange={stretchAngle => change({ stretchAngle }, 'stretchAngle')} />}
+      {ready && (s.stretchField === 'centre' || s.stretchField === 'saddle') && <div className="pair">
+        <SliderField label="Centre X" name="Stretch centre X" value={s.stretchCentreX} min={0} max={100} format={v => `${v} %`}
+          tip="Where the centre is across the sheet: 0 % is the left edge, 100 % the right." onChange={stretchCentreX => change({ stretchCentreX }, 'stretchCentreX')} />
+        <SliderField label="Centre Y" name="Stretch centre Y" value={s.stretchCentreY} min={0} max={100} format={v => `${v} %`}
+          tip="Where the centre is down the sheet: 0 % is the top, 100 % the bottom." onChange={stretchCentreY => change({ stretchCentreY }, 'stretchCentreY')} />
+      </div>}
+      {ready && s.stretchField === 'centre' &&
+        <SliderField label="Turn" name="Stretch turn" value={s.stretchTurn} min={0} max={90} step={5} format={v => `${v}°`}
+          tip="0° points cells out from the centre like rays, 90° wraps them round it in rings, in between spirals." onChange={stretchTurn => change({ stretchTurn }, 'stretchTurn')} />}
+      {ready && s.stretchField === 'wave' && <>
+        <SliderField label="Waves" name="Stretch waves" value={s.stretchWaves} min={RANGES.stretchWaves[0]} max={RANGES.stretchWaves[1]}
+          tip="Full waves along the sheet’s longer side." onChange={stretchWaves => change({ stretchWaves }, 'stretchWaves')} />
+        <SliderField label="Swing" name="Stretch swing" value={s.stretchSwing} min={RANGES.stretchSwing[0]} max={RANGES.stretchSwing[1]} step={5} format={v => `${v}°`}
+          tip="How far the waves turn to each side of Direction." onChange={stretchSwing => change({ stretchSwing }, 'stretchSwing')} />
+      </>}
+      {ready && s.stretchField === 'cells' &&
+        <SliderField label="Swirls" name="Stretch swirls" value={s.stretchCells} min={RANGES.stretchCells[0]} max={RANGES.stretchCells[1]}
+          tip="Swirls along the sheet’s longer side." onChange={stretchCells => change({ stretchCells }, 'stretchCells')} />}
+      {ready && (s.stretchField === 'noise' || s.stretchField === 'curl') && <>
+        <SliderField label="Detail" name="Stretch detail" value={s.stretchScale} min={RANGES.stretchScale[0]} max={RANGES.stretchScale[1]}
+          tip="How busy the field is: 1 is one broad sweep, 12 many small turns." onChange={stretchScale => change({ stretchScale }, 'stretchScale')} />
+        <Button className="wide" tip="Pick another field with the same detail."
+          onClick={() => change({ stretchSeed: randomSeed() }, 'stretchSeed')}>New flow</Button>
+      </>}
+      {s.stretch > 1 && (ready
+        ? <>
+          {share !== null && <p className="hint">Cells follow the field over <b>{Math.round(share * 100)} %</b> of the sheet.{share < 0.6 ? ' Elsewhere it turns too fast for cells this big, so they stay round: lower the field’s detail or add cells.' : ''}</p>}
+          <p className="hint">{FIELD_HINT[s.stretchField as Exclude<FieldKind, 'fixed'>]} Each point measures distance with its own ellipse, turned to follow the field. Where nearby directions disagree, as at a swirl’s centre, cells stay round. In Holes style, check the narrowest hole.</p>
+        </>
+        : <p className="hint">{s.stretchField === 'veins' ? 'Turn on veins below to follow them. Until then, ' : s.stretchField === 'picture' ? 'Choose a picture under Density to follow it. Until then, ' : ''}Each point measures distance with an ellipse instead of a circle, so cells stay straight-edged but grow longer along {s.stretchAngle}°. Long cells leave long, thin webs between them: in Holes style, check the narrowest hole.</p>)}
     </Section>
 
     <Section title="Veins">
@@ -170,8 +231,11 @@ export const PatternPanel = memo(function PatternPanel({ s, change, stale, onApp
         ? <p className="hint">Primary veins split the sheet into regions, each filled with its own cells, like an insect wing or a leaf.</p>
         : <>
           {s.veins !== 'imported' && <>
-            <SliderField label="Vein ends" value={s.veinCount} min={RANGES.veinCount[0]} max={RANGES.veinCount[1]}
-              tip={s.veins === 'wing' ? 'How many veins reach the edge. Veins that bunch up near the start join, so there are fewer there.' : 'How many branch ends the veins have.'}
+            {s.veins === 'leaf' && <SwitchField label="Join into loops" checked={s.veinLoops}
+              tip="Veins join where they meet, closing loops as in most leaves. Off: they branch like a tree and run on to the edge."
+              onChange={veinLoops => change({ veinLoops }, 'veinLoops')} />}
+            <SliderField label={loops ? 'Loops' : 'Vein ends'} name={loops ? 'Vein loops' : 'Vein ends'} value={s.veinCount} min={RANGES.veinCount[0]} max={RANGES.veinCount[1]}
+              tip={s.veins === 'wing' ? 'How many veins reach the edge. Veins that bunch up near the start join, so there are fewer there.' : loops ? 'About how many regions the veins close off.' : 'How many branch ends the veins have.'}
               onChange={veinCount => change({ veinCount }, 'veinCount')} />
             <Segmented label="Start from" options={STARTS} value={s.veinStart} onChange={veinStart => change({ veinStart }, 'veinStart')} />
           </>}
@@ -179,7 +243,7 @@ export const PatternPanel = memo(function PatternPanel({ s, change, stale, onApp
             tip="How wide veins are where they start. In Holes style, the web on each side adds to it." onChange={veinWidth => change({ veinWidth }, 'veinWidth')} />
           <SliderField label="Taper" value={s.veinTaper} min={RANGES.veinTaper[0]} max={RANGES.veinTaper[1]} step={5} format={v => `${v} %`}
             tip="How much narrower veins get toward their far ends." onChange={veinTaper => change({ veinTaper }, 'veinTaper')} />
-          <p className="hint">{VEIN_HINT[s.veins]}</p>
+          <p className="hint">{VEIN_HINT[loops ? 'loops' : s.veins]}</p>
         </>}
       <Button className="wide" tip="Use an SVG’s open lines as veins. They’re placed by the file’s page, or by its outline if it has one."
         onClick={onImportVeins}>Import veins…</Button>
