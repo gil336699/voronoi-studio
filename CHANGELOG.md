@@ -1,5 +1,10 @@
 # Voronoi Studio Changelog
 
+## 1.10.1 2026-11-14
+
+- **Centre X and Centre Y share their row evenly.** When Stretch follows **Around a centre** or **Saddle**, the two centre sliders now take half the row each, with each label on one line. Before, Centre X was squeezed into a narrow column and its label wrapped onto two lines.
+- **The Follows label stays dark while the list can be used.** It used to turn grey whenever one of its choices was unavailable, such as **Along the veins** before there are veins, so the whole list looked switched off.
+
 ## 1.10.0 2026-11-14
 
 - **Smoother, more leaf-like Leaf veins.** Leaf veins are rebuilt on the set-up of Jason Webb's space colonization experiments: a dense tree grown in short steps. Veins are now smooth curves that fan out from the start and branch, thickest at the start and tapering along their whole length. Each main vein runs on along its own branch to the edge. Before, tips were carried on in straight lines that crossed regions, and veins were made of long straight steps, which looked sketchy.

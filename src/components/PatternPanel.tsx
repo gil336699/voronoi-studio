@@ -193,7 +193,7 @@ export const PatternPanel = memo(function PatternPanel({ s, change, stale, onApp
           unavailable={s.stretch <= 1 && 'Turn the amount up from Off first.'}
           tip={s.stretchField === 'saddle' && ready ? 'The axis cells come in along. 0° is right, 90° is up.' : s.stretchField === 'wave' && ready ? 'The way the waves run. 0° is right, 90° is up.' : 'The direction cells get longer in. 0° is right, 90° is up.'}
           onChange={stretchAngle => change({ stretchAngle }, 'stretchAngle')} />}
-      {ready && (s.stretchField === 'centre' || s.stretchField === 'saddle') && <div className="pair">
+      {ready && (s.stretchField === 'centre' || s.stretchField === 'saddle') && <div className="pair two">
         <SliderField label="Centre X" name="Stretch centre X" value={s.stretchCentreX} min={0} max={100} format={v => `${v} %`}
           tip="Where the centre is across the sheet: 0 % is the left edge, 100 % the right." onChange={stretchCentreX => change({ stretchCentreX }, 'stretchCentreX')} />
         <SliderField label="Centre Y" name="Stretch centre Y" value={s.stretchCentreY} min={0} max={100} format={v => `${v} %`}

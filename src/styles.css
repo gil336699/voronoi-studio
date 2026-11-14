@@ -158,7 +158,8 @@ button.wide { width: 100%; margin-top: 10px; }
 .field { display: grid; gap: 6px; margin-top: 14px; color: var(--label); font-size: 12.5px; }
 .field-label { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 18px; }
 .field-label b { color: var(--label-2); font-weight: 500; font-variant-numeric: tabular-nums; }
-.field:has(:disabled) .field-label, .switch-row:has(:disabled), .color-row:has(:disabled) { color: var(--label-3); }
+/* A disabled option inside an enabled list doesn't grey the list's label. */
+.field:has(:disabled:not(option)) .field-label, .switch-row:has(:disabled), .color-row:has(:disabled) { color: var(--label-3); }
 .hint { margin-top: 8px; color: var(--label-2); font-size: 12px; line-height: 1.4; }
 .hint b { color: var(--label); font-weight: 600; }
 .hint.error { color: var(--red); }
