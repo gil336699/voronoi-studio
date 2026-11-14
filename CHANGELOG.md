@@ -1,5 +1,9 @@
 # Voronoi Studio Changelog
 
+## 1.12.2 2026-11-14
+
+- **The README shows every variation side by side.** The Features section opens with a table of 31 patterns in six families, each the same round 200 mm panel made in the app with one setting changed. Its vector PDF and full-size PNG are on this release.
+
 ## 1.12.1 2026-11-14
 
 - **Exports always end in a file or a message.** Where a browser has the save dialog's API but can't show the dialog, as some embedded and in-app browsers do, Laser SVG, DXF, SVG, PNG and Save now download instead. Before, the dialog's instant refusal looked like a cancel, so those exports made no file and said nothing.

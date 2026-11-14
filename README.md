@@ -59,6 +59,12 @@ The app asks before New, Open, Generate or Apply settings would replace unsaved 
 
 ## Features
 
+Every variation, side by side. Each tile is the same round 200 mm panel of 800 cells, made in the app and saved with its own SVG export, with one setting changed.
+
+[![Every variation, side by side: 31 Voronoi patterns from Voronoi Studio, each the same round 200 mm panel with one setting changed, in six families. Placement: random, even, hex, square and relaxed. Density gradient: linear, radial, radial toward the edge, and a picture of a spiral. Stretch: one direction, rays, spiral, rings, saddle, waves, swirl grid, noise, swirling noise, along the veins and along the picture. Veins: wing, leaf, leaf with loops, leaf from the centre, and a lacewing's imported veins tapering from the base. Sheet: a rectangle and an imported leaf outline with a hanging hole. Cell style: holes, filled holes, walls that follow cell size, and sites with their Delaunay triangles. At the top, a gold panel cut like a skeleton leaf.](docs/variations.png)](docs/variations.png)
+
+The table as a [vector PDF](https://github.com/gil336699/voronoi-studio/releases/download/v1.12.2/voronoi-studio-variations.pdf) zooms and prints sharp. The lacewing's primary veins are redrawn from Hoffmann et al., *PNAS* 2018, figure 4B.
+
 ### Placement
 
 | Placement | What it does |

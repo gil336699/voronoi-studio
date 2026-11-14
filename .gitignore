@@ -12,6 +12,7 @@ coverage/
 !test-fixtures/*.voronoi.json
 *.dxf
 *.png
+!docs/*.png
 *.svg
 !public/*.svg
 !test-fixtures/*.svg
