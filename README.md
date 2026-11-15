@@ -178,12 +178,14 @@ The File tab checks the cut files against your machine before you export. Give i
 | Webs the laser burns away | Holes | the material between two holes, or between a hole and the sheet outline when the outline is cut, is no wider than the kerf | Web width, Walls follow cell size, Border |
 | Webs under the smallest web | Holes | that material is wider than the kerf but thinner than the smallest web | the same |
 | Holes under the smallest feature | Holes | a hole is narrower than the smallest feature | raise Smallest hole to leave them solid, or use fewer cells |
-| Cuts shorter than the smallest feature | Lines | a wall between two cells is between 5 µm and the smallest feature long: the laser makes it as a dot. A wall a stretch bends into straight pieces is measured whole | relax |
+| Cuts shorter than the smallest feature (a note) | Lines | a wall between two cells is between 5 µm and the smallest feature long: the laser cuts it as little more than a dot, so the cells around it seem to meet at one corner, though every piece is still cut out. A wall a stretch bends into straight pieces is measured whole | relax |
 | Cells narrower than the smallest web | Lines | a cell, cut out as a piece, is narrower than the smallest web; a cell an imported outline cuts apart is each of its pieces | relax, or use fewer cells |
 | Border under the smallest web | Lines | the frame between the pattern and the cut sheet outline is thinner than the smallest web. Round an ellipse it narrows toward the ends of the long axis, and is measured there | Border, or Include the sheet outline |
 | Veins under the smallest web | Lines | a vein, cut along both sides, narrows below the smallest web | Vein width or Taper, or use Holes |
 | Outlines that cross themselves, holes too small for the files | Holes | shown only if there are any | Corner radius or Smallest hole |
-| Sites or Delaunay lines in the cut files | both | they're shown, so the files hold them as marks on their own layers | set those layers to score or off, or hide them |
+| Sites or Delaunay lines in the cut files (a note) | both | they're shown, so the files hold them as marks on their own layers | set those layers to score or off, or hide them |
+
+Rows with a grey dot are notes: worth knowing before cutting, but not problems. They're listed after any problems and aren't counted in the summary, so a new design in Lines style, which has a few short cuts, reads "Ready to cut: no piece is narrower than 1 mm."
 
 Point at a row and its problems light up in orange on the sheet, each with a ring round it, so even a 0.1 mm web shows at full view. Click the row to keep them shown while you change settings on other tabs; Esc clears it (an Esc that closes a dialog doesn't). It only warns: every export stays available, except that Laser SVG and DXF stay off when Holes leaves no hole.
 

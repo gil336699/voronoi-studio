@@ -1,5 +1,9 @@
 # Voronoi Studio Changelog
 
+## 1.13.4 2026-11-15
+
+- **A new design reads Ready to cut.** In Lines style, cuts shorter than the smallest feature are now a note, with a grey dot, instead of a problem. The laser cuts such a wall as little more than a dot, so the cells around it seem to meet at one corner, but every piece is still cut out. Every new design has some (10 to 17 under 0.5 mm in 40 seeds), so the File tab of a first visit said "1 thing to check before cutting", and it took about 300 relax steps to clear. Now it says "Ready to cut: no piece is narrower than 1 mm." The short cuts are listed after any problems, and pointing at the row still shows them on the sheet.
+
 ## 1.13.3 2026-11-15
 
 - **A web drawn exactly at the smallest web passes.** On an imported outline, with veins or with stretch, the geometry library leaves webs a fraction of a micrometre off what you set, so a 1 mm web with a 1 mm Smallest web was listed: "117 webs under the smallest web · Thinnest 1 mm, under 1 mm" on the pill with a hole, 255 with Leaf loops. Now anything within 1 µm of a limit passes, the precision the cut files are written to. When a value is really just under its limit, the row shows more decimals, "Thinnest 0.997 mm, under 1 mm", so it never reads "1 mm, under 1 mm".

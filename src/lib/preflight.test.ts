@@ -335,3 +335,51 @@ describe('Ready to cut? 1.13.3', () => {
     expect(summaryWords(marks, { ...s, cellStyle: 'holes', sheetOutline: true })).toBe('Holes are hidden, so the cut files hold only the sheet outline and any marks.')
   })
 })
+
+describe('Ready to cut? 1.13.4: short cuts are a note', () => {
+  // The design the app opens with: the defaults, seeded and relaxed as the app does.
+  const opening = (seed: number) => {
+    const s = { ...DEFAULTS, seed }
+    const points = runJob({ kind: 'generate', settings: s }).points
+    return { s, points, g: buildGeometry(points, { ...s, stretchSpec: stretchOf(s) }) }
+  }
+
+  it('reads Ready to cut for a new design, with its short cuts as a note', () => {
+    for (let seed = 1; seed <= 8; seed++) {
+      const { s, points, g } = opening(seed)
+      const r = preflight(g, points, s)
+      const short = find(r.checks, 'shortCuts')
+      // Every new design has some (10 to 17 in 40 seeds), and they were its only problem before 1.13.4.
+      expect(short?.count, `seed ${seed}`).toBeGreaterThan(0)
+      expect(short!.note).toBe(true)
+      expect(r.checks.filter(c => !c.note).map(c => c.id), `seed ${seed}`).toEqual([])
+      expect(summaryWords(r, s)).toBe('Ready to cut: no piece is narrower than 1 mm.')
+    }
+    // With no short cut the summary says so (this hex design's shortest wall is 0.39 mm, at the border).
+    const hex = design({ placement: 'hex', showSites: false, smallestFeature: 0.3 })
+    const clear = preflight(hex.g, hex.points, hex.s)
+    expect(clear.checks).toEqual([])
+    expect(summaryWords(clear, hex.s)).toBe('Ready to cut: no cut is shorter than 0.3 mm, and no piece narrower than 1 mm.')
+  })
+
+  it('lists problems before notes', () => {
+    const { s, points, g } = design({ count: 3000, placement: 'random' })
+    const r = preflight(g, points, s)
+    const notes = r.checks.map(c => Boolean(c.note))
+    expect(notes).toContain(true)
+    expect(notes).toContain(false)
+    expect(notes).toEqual([...notes].sort((a, b) => Number(a) - Number(b)))
+    expect(r.checks.slice(-2).map(c => c.id)).toEqual(['shortCuts', 'marks'])
+  })
+
+  it('says the pieces are still cut out', () => {
+    const { s, points, g } = opening(1)
+    const r = preflight(g, points, s)
+    const one = checkWords({ id: 'shortCuts', count: 1, worst: 0.2, threshold: 0.5, note: true, marks: { spots: [] } }, r, s)
+    expect(one.label).toBe('1 cut shorter than the smallest feature')
+    expect(one.detail).toBe('Shortest 0.2 mm, under 0.5 mm')
+    expect(one.tip).toBe('This edge is shorter than your smallest feature (0.5 mm), so the laser cuts it as little more than a dot, and the cells around it seem to meet at one corner. Every piece is still cut out; only the look of that corner changes. Relax the pattern (R), or turn on Auto-relax (P), to lengthen it.')
+    const many = checkWords(find(r.checks, 'shortCuts')!, r, s)
+    expect(many.tip).toMatch(/^These edges are shorter than your smallest feature \(0\.5 mm\), so the laser cuts each as little more than a dot.* Every piece is still cut out; only the look of those corners changes\./)
+  })
+})

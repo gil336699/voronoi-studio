@@ -248,7 +248,8 @@ details[open] > summary::after { transform: rotate(45deg); }
 .inline-field .field-note { grid-column: 1 / -1; }
 
 /* Ready to cut?: the summary, then a row per thing to check, each showing where it is on the sheet. */
-.preflight-summary { margin-top: 12px; }
+/* text-wrap: pretty keeps a last line of one word, such as "mm.", from being left on its own. */
+.preflight-summary { margin-top: 12px; text-wrap: pretty; }
 .preflight-summary.problems { color: var(--label); font-weight: 600; }
 .preflight-list { display: grid; gap: 6px; margin: 8px 0 0; padding: 0; list-style: none; }
 .preflight-row {

@@ -4,9 +4,12 @@
 // - Holes style: cells left solid; webs (the material between two holes, or between a hole and the outline when the
 //   outline is cut) no wider than the kerf, which the laser burns away, or under the smallest web; holes under the
 //   smallest feature.
-// - Lines style, which cuts every cell out as a piece: edges shorter than the smallest feature, and cells, the border
-//   and veins (strips cut along both sides) under the smallest web.
-// - Both: hole outlines that cross themselves or are too small to write, and sites or Delaunay lines in the files.
+// - Lines style, which cuts every cell out as a piece: cells, the border and veins (strips cut along both sides) under
+//   the smallest web, and, as a note, edges shorter than the smallest feature.
+// - Both: hole outlines that cross themselves or are too small to write, and, as a note, sites or Delaunay lines in
+//   the files.
+// Notes are worth knowing before cutting but aren't problems: the summary still reads "Ready to cut", and they're
+// listed after the problems.
 // Webs are measured exactly. A convex hole is its core polygon grown by its corner radius, so the gap between two is
 // the gap between their cores less both radii; other holes are measured on their outlines. Lengths are millimetres.
 import { cellArea, cellCentroid, type Cell } from '../voronoi/diagram'
@@ -115,10 +118,11 @@ export function preflight(g: Geometry, points: Float64Array, s: PreflightSetting
   if (style === 'lines') {
     // Walls shorter than the smallest feature (walls under 5 µm aren't in the files at all). A wall is measured whole:
     // with a stretch that follows a field it's drawn as several straight pieces, which before 1.13.3 were each
-    // counted as a short cut.
+    // counted as a short cut. They're a note: the laser cuts one as little more than a dot, which changes how the
+    // corner looks but not the pieces. Before 1.13.4 they were a problem, and every new design had 10 to 17.
     const short = wallsOf(g.edges.internal).filter(w => w.length >= MIN_CUT && w.length < feature - EPS)
     if (short.length) checks.push({
-      id: 'shortCuts', count: short.length, worst: least(short.map(w => w.length)), threshold: feature,
+      id: 'shortCuts', count: short.length, worst: least(short.map(w => w.length)), threshold: feature, note: true,
       marks: {
         spots: short.map(w => { const e = w.pieces[0]; return { x: (e[0] + e[2]) / 2, y: (e[1] + e[3]) / 2, size: w.length } }),
         segments: short.flatMap(w => w.pieces),
@@ -167,7 +171,8 @@ export function preflight(g: Geometry, points: Float64Array, s: PreflightSetting
       checks.push({ id: 'marks', count: sites + delaunay.length, worst: NaN, threshold: NaN, sites, delaunay: delaunay.length, note: true, marks: { spots, segments: delaunay } })
     }
   }
-  return { style, checks, holes: g.holes.length, cells }
+  // Problems first, then notes.
+  return { style, checks: [...checks.filter(c => !c.note), ...checks.filter(c => c.note)], holes: g.holes.length, cells }
 }
 
 // The smallest of many values (spreading tens of thousands into Math.min can overflow the stack).
@@ -596,7 +601,7 @@ export function checkWords(c: Check, p: Preflight, s: WordSettings): CheckWords 
     case 'shortCuts':
       return {
         label: `${counted(n, 'cut', 'cuts')} shorter than the smallest feature`, detail: under('Shortest', c.threshold),
-        tip: `${one ? 'This edge is' : 'These edges are'} shorter than your smallest feature (${feature}). The laser makes ${one ? 'it' : 'them'} as a dot, and the cells around ${one ? 'it' : 'them'} seem to meet at one corner. Relax the pattern (R), or turn on Auto-relax (P), to lengthen ${one ? 'it' : 'them'}.`,
+        tip: `${one ? 'This edge is' : 'These edges are'} shorter than your smallest feature (${feature}), so the laser cuts ${one ? 'it' : 'each'} as little more than a dot, and the cells around ${one ? 'it' : 'each'} seem to meet at one corner. Every piece is still cut out; only the look of ${one ? 'that corner' : 'those corners'} changes. Relax the pattern (R), or turn on Auto-relax (P), to lengthen ${one ? 'it' : 'them'}.`,
       }
     case 'thinCells': {
       const burned = c.burned ?? 0
@@ -652,6 +657,9 @@ export function summaryWords(p: Preflight, s: WordSettings): string {
   if (p.style !== 'marks' && !p.cells) return 'Nothing to check: no cells fit inside the border.'
   const web = L(Math.max(s.kerf, s.smallestWeb)), feature = L(s.smallestFeature)
   if (p.style === 'holes') return `Ready to cut: every cell has a hole, no web is under ${web}, and no hole under ${feature}.`
-  if (p.style === 'lines') return `Ready to cut: no cut is shorter than ${feature}, and no piece narrower than ${web}.`
+  // Short cuts are a note, listed below the summary, so it only claims what holds.
+  if (p.style === 'lines') return p.checks.some(c => c.id === 'shortCuts')
+    ? `Ready to cut: no piece is narrower than ${web}.`
+    : `Ready to cut: no cut is shorter than ${feature}, and no piece narrower than ${web}.`
   return `${s.cellStyle === 'holes' ? 'Holes are' : 'Edges are'} hidden, so the cut files hold only ${s.sheetOutline === false ? 'the marks' : 'the sheet outline and any marks'}.`
 }
