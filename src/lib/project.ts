@@ -9,7 +9,8 @@ export const SCHEMA = 'voronoi-studio/project'
 // (settings.veins, settings.veinLines) and version 6 stretch that follows a field (settings.stretchField).
 // Older files open unchanged. The machine values for Ready to cut? (settings.kerf, smallestWeb, smallestFeature,
 // 1.13.0) came without a new version: they don't change the design, so older apps open the same design and only
-// drop those three numbers, and files from before them open with the defaults.
+// drop those three numbers. A file from before them keeps the values in use, as New does, since they describe the
+// laser and material (1.13.0–1.13.2 gave such files the defaults).
 export const VERSION = 6
 export const EXTENSION = '.voronoi.json'
 
@@ -28,7 +29,8 @@ export function serializeProject(design: Design, app = 'Voronoi Studio'): string
 
 export class ProjectError extends Error {}
 
-export function parseProject(text: string): Design {
+// machine: the machine values in use, kept for a file that has none of its own (without it, the defaults).
+export function parseProject(text: string, machine?: Pick<Settings, 'kerf' | 'smallestWeb' | 'smallestFeature'>): Design {
   let data: unknown
   try { data = JSON.parse(text) } catch { throw new ProjectError('This file is not a Voronoi Studio project: it is not valid JSON.') }
   if (!data || typeof data !== 'object') throw new ProjectError('This file is not a Voronoi Studio project.')
@@ -37,7 +39,9 @@ export function parseProject(text: string): Design {
   if (typeof file.version !== 'number' || file.version > VERSION) {
     throw new ProjectError(`This project was saved by a newer Voronoi Studio (file version ${String(file.version)}). Update the app to open it.`)
   }
-  const settings = sanitizeSettings(file.settings)
+  const given = file.settings && typeof file.settings === 'object' ? (file.settings as object) : {}
+  const kept = machine ? Object.fromEntries((['kerf', 'smallestWeb', 'smallestFeature'] as const).filter(k => !(k in given)).map(k => [k, machine[k]])) : {}
+  const settings = sanitizeSettings({ ...given, ...kept })
   const raw = Array.isArray(file.points) ? file.points : []
   if (raw.length % 2 || raw.length / 2 > MAX_POINTS || !raw.every(v => typeof v === 'number' && Number.isFinite(v))) {
     throw new ProjectError('The points in this project are damaged, so it cannot be opened.')

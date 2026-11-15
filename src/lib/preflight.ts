@@ -10,14 +10,14 @@
 // Webs are measured exactly. A convex hole is its core polygon grown by its corner radius, so the gap between two is
 // the gap between their cores less both radii; other holes are measured on their outlines. Lengths are millimetres.
 import { cellArea, cellCentroid, type Cell } from '../voronoi/diagram'
-import { convexHull, isConvex, minWidth, type Polygon, type Segment, type Vec } from '../voronoi/geometry'
+import { convexHull, isConvex, minWidth, signedArea, type Polygon, type Segment, type Vec } from '../voronoi/geometry'
 import { arcFromBulge, type Hole, type Outline } from '../voronoi/holes'
 import type { Geometry } from '../voronoi/pattern'
-import { regionRings } from '../voronoi/region'
+import { insetRegion, regionCenter, regionHeight, regionRings, regionWidth, type Region } from '../voronoi/region'
 import { cutContents, MIN_CUT, MIN_PIECE, tidyOutline } from './cutPaths'
 import type { Settings } from './settings'
 import { siteRadius } from './style'
-import { formatSmall } from './units'
+import { decimals, formatSmall, toUnits, trimZeros, UNIT_LABEL } from './units'
 
 export type CheckId = 'solid' | 'burnWebs' | 'thinWebs' | 'smallHoles' | 'shortCuts' | 'thinCells' | 'border' | 'thinVeins'
   | 'crossing' | 'collapsed' | 'marks'
@@ -34,6 +34,7 @@ export type Check = {
   marks: Marks
   burned?: number // of count, how many are no wider than the kerf (pieces and veins)
   frames?: number // webs: how many are between a hole and the outline
+  uneven?: boolean // border: the frame's width varies round the sheet (an ellipse), and worst is where it's narrowest
   sites?: number; delaunay?: number // marks: how many of each are in the files
   note?: boolean // worth knowing before cutting, but not a problem
 }
@@ -43,7 +44,10 @@ export type Preflight = { style: CutStyle; checks: Check[]; holes: number; cells
 export type PreflightSettings = Pick<Settings, 'cellStyle' | 'showEdges' | 'showSites' | 'showDelaunay' | 'sheetOutline' | 'border'
   | 'kerf' | 'smallestWeb' | 'smallestFeature'>
 
-const EPS = 1e-6 // mm: a web exactly at a limit passes
+// mm: a web, hole, cut or piece within 1 µm of a limit passes. The cut files are written to 1 µm, and Clipper's
+// 0.1 µm grid and offsets leave walls up to about half a micrometre off what was asked, so before 1.13.3 a 1 mm web
+// with a 1 mm smallest web could read "Thinnest 1 mm, under 1 mm" on an imported outline or with veins.
+export const EPS = 1e-3
 const ARC_TOLERANCE = 0.005 // mm: arcs are flattened to within this for the outline checks
 
 export function preflight(g: Geometry, points: Float64Array, s: PreflightSettings): Preflight {
@@ -54,15 +58,19 @@ export function preflight(g: Geometry, points: Float64Array, s: PreflightSetting
   const style: CutStyle = !cutContents(s).length ? 'nothing' : !s.showEdges ? 'marks' : s.cellStyle === 'holes' ? 'holes' : 'lines'
 
   if (style === 'holes') {
-    // Cells left solid.
-    const has = new Uint8Array(g.cells.length)
-    for (const h of g.holes) has[h.cell] = 1
+    // Cells left solid, and pieces of a cell an outline cuts apart that are too narrow for a hole of their own while
+    // another piece has one (each piece gets its own hole; before 1.13.3 such pieces weren't listed).
+    const holesOf = new Map<number, Hole[]>()
+    for (const h of g.holes) { const list = holesOf.get(h.cell); if (list) list.push(h); else holesOf.set(h.cell, [h]) }
     const solid: Cell[] = [], solidSpots: Spot[] = []
     g.cells.forEach((cell, i) => {
-      if (!cell || has[i]) return
-      solid.push(cell)
-      const [x, y] = cellCentroid(cell)
-      solidSpots.push({ x, y, size: Math.sqrt(Math.abs(cellArea(cell))) })
+      if (!cell) return
+      const mine = holesOf.get(i)
+      for (const bare of mine ? barePieces(cell, mine) : [cell]) {
+        solid.push(bare)
+        const [x, y] = cellCentroid(bare)
+        solidSpots.push({ x, y, size: Math.sqrt(Math.abs(cellArea(bare))) })
+      }
     })
     if (solid.length) checks.push({ id: 'solid', count: solid.length, worst: NaN, threshold: NaN, marks: { spots: solidSpots, cells: solid } })
 
@@ -105,12 +113,16 @@ export function preflight(g: Geometry, points: Float64Array, s: PreflightSetting
   }
 
   if (style === 'lines') {
-    // Edges shorter than the smallest feature (edges under 5 µm aren't in the files at all).
-    const short: Segment[] = []
-    for (const e of g.edges.internal) { const length = Math.hypot(e[2] - e[0], e[3] - e[1]); if (length >= MIN_CUT && length < feature - EPS) short.push(e) }
+    // Walls shorter than the smallest feature (walls under 5 µm aren't in the files at all). A wall is measured whole:
+    // with a stretch that follows a field it's drawn as several straight pieces, which before 1.13.3 were each
+    // counted as a short cut.
+    const short = wallsOf(g.edges.internal).filter(w => w.length >= MIN_CUT && w.length < feature - EPS)
     if (short.length) checks.push({
-      id: 'shortCuts', count: short.length, worst: least(short.map(e => Math.hypot(e[2] - e[0], e[3] - e[1]))), threshold: feature,
-      marks: { spots: short.map(e => ({ x: (e[0] + e[2]) / 2, y: (e[1] + e[3]) / 2, size: Math.hypot(e[2] - e[0], e[3] - e[1]) })), segments: short },
+      id: 'shortCuts', count: short.length, worst: least(short.map(w => w.length)), threshold: feature,
+      marks: {
+        spots: short.map(w => { const e = w.pieces[0]; return { x: (e[0] + e[2]) / 2, y: (e[1] + e[3]) / 2, size: w.length } }),
+        segments: short.flatMap(w => w.pieces),
+      },
     })
 
     // Every cell is cut out as a piece: pieces under the smallest web.
@@ -128,9 +140,15 @@ export function preflight(g: Geometry, points: Float64Array, s: PreflightSetting
     }
     if (thin.length) checks.push({ id: 'thinCells', count: thin.length, worst: narrowest, threshold: material, burned, marks: { spots: thinSpots, cells: thin } })
 
-    // The frame between the pattern and the sheet outline, a piece of its own when both are cut.
-    if (s.sheetOutline && s.border > 1e-9 && s.border < material - EPS) {
-      checks.push({ id: 'border', count: 1, worst: s.border, threshold: material, burned: s.border <= kerf + EPS ? 1 : 0, marks: { spots: [], rings: regionRings(g.sheet) } })
+    // The frame between the pattern and the sheet outline, a piece of its own when both are cut. Round an ellipse it
+    // narrows toward the ends of the long axis, so it's measured there (before 1.13.3 it was taken to be the border).
+    if (s.sheetOutline && s.border > 1e-9) {
+      const ellipse = g.sheet.shape === 'ellipse' ? ellipseFrame(g.sheet, insetRegion(g.sheet, s.border)) : null
+      const width = ellipse ? ellipse.width : s.border
+      if (width < material - EPS) checks.push({
+        id: 'border', count: 1, worst: width, threshold: material, burned: width <= kerf + EPS ? 1 : 0, uneven: Boolean(ellipse),
+        marks: { spots: ellipse ? ellipse.at.map(([x, y]) => ({ x, y, size: width })) : [], rings: regionRings(g.sheet) },
+      })
     }
 
     // Veins: Lines style cuts along both sides of each, so each is a strip of material.
@@ -385,10 +403,108 @@ function spotOf(hole: Hole): Spot {
   return { x: (x0 + x1) / 2, y: (y0 + y1) / 2, size: hole.width }
 }
 
-// The narrowest width of a cell, across its convex outline (a slight overestimate for concave cells).
+// A cell's separate pieces (an outline can cut a cell apart): its outer rings, each with the inner rings inside it.
+function piecesOf(cell: Cell): Cell[] {
+  if (cell.length === 1) return [cell]
+  const outer = cell.filter(ring => signedArea(ring) > 0), inner = cell.filter(ring => signedArea(ring) < 0)
+  if (outer.length <= 1) return [cell]
+  return outer.map(ring => [ring, ...inner.filter(hole => inside(ring, hole[0]))])
+}
+
+// The pieces of a cell with none of its holes in them.
+function barePieces(cell: Cell, holes: Hole[]): Cell[] {
+  const pieces = piecesOf(cell)
+  if (pieces.length === 1) return []
+  return pieces.filter(piece => !holes.some(h => h.outline.points.length > 0 && inside(piece[0], h.outline.points[0])))
+}
+
+// The narrowest width of a cell, across each piece's convex outline (a slight overestimate for concave ones). Lines style
+// cuts each piece out on its own, so a cell an outline cuts apart is as narrow as its narrowest piece (before 1.13.3
+// all its pieces were measured as one).
 function cellWidth(cell: Cell): number {
-  if (cell.length === 1 && isConvex(cell[0])) return minWidth(cell[0])
-  return minWidth(convexHull(cell.flatMap(ring => ring)))
+  let narrowest = Infinity
+  for (const [ring] of piecesOf(cell)) narrowest = Math.min(narrowest, isConvex(ring) ? minWidth(ring) : minWidth(convexHull(ring)))
+  return narrowest
+}
+
+// Whether a point is inside a ring (even-odd).
+function inside(ring: Polygon, [x, y]: Vec): boolean {
+  let yes = false
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i], [xj, yj] = ring[j]
+    if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) yes = !yes
+  }
+  return yes
+}
+
+// A cell wall as the laser cuts it, from one corner where three or more cells meet (or the border) to the next.
+export type Wall = { length: number; pieces: Segment[] }
+
+// The walls the edges make. With a stretch that follows a field a wall is drawn as several straight pieces, which meet
+// only each other, so pieces are joined through every point where exactly two meet. Ends are matched on a 10 nm grid
+// in a hash table of their own (a Map of text keys made the Lines check 3.5 times slower).
+export function wallsOf(edges: Segment[]): Wall[] {
+  const m = edges.length, size = 1 << Math.max(4, Math.ceil(Math.log2(4 * m + 1))), mask = size - 1
+  const kx = new Int32Array(size), ky = new Int32Array(size), count = new Int32Array(size)
+  const first = new Int32Array(size), second = new Int32Array(size) // the first two pieces at each point
+  const at = new Int32Array(2 * m) // the table slot of each piece's two ends
+  for (let i = 0; i < 2 * m; i++) {
+    const e = edges[i >> 1], ix = Math.round(e[(i & 1) * 2] * 1e5), iy = Math.round(e[(i & 1) * 2 + 1] * 1e5)
+    let slot = ((Math.imul(ix, 0x9e3779b1) ^ Math.imul(iy, 0x85ebca77)) >>> 0) & mask
+    while (count[slot] && (kx[slot] !== ix || ky[slot] !== iy)) slot = (slot + 1) & mask
+    if (!count[slot]) { kx[slot] = ix; ky[slot] = iy; first[slot] = i >> 1 } else if (count[slot] === 1) second[slot] = i >> 1
+    count[slot]++
+    at[i] = slot
+  }
+  const used = new Uint8Array(m), walls: Wall[] = []
+  for (let i = 0; i < m; i++) {
+    if (used[i]) continue
+    used[i] = 1
+    const pieces = [edges[i]]
+    for (let end = 0; end < 2; end++) {
+      let slot = at[2 * i + end], from = i
+      while (count[slot] === 2) {
+        const next = first[slot] === from ? second[slot] : first[slot]
+        if (used[next]) break
+        used[next] = 1; pieces.push(edges[next])
+        slot = at[2 * next] === slot ? at[2 * next + 1] : at[2 * next]
+        from = next
+      }
+    }
+    let length = 0
+    for (const e of pieces) length += Math.hypot(e[2] - e[0], e[3] - e[1])
+    walls.push({ length, pieces })
+  }
+  return walls
+}
+
+// The narrowest frame between an elliptical sheet and the ellipse its pattern fills, which has both semi-axes shortened
+// by the border. It narrows toward the ends of the long axis: a 600 × 60 mm sheet with a 2 mm border is 1.14 mm wide
+// there. Points round a quarter of the inner ellipse are each measured to the outer one by Newton's method, from two
+// starting angles (each result is a true distance, so the smaller is kept); `at` is where it's narrowest, all four ways.
+export function ellipseFrame(sheet: Region, inner: Region): { width: number; at: Vec[] } {
+  const [cx, cy] = regionCenter(sheet)
+  const a = regionWidth(sheet) / 2, b = regionHeight(sheet) / 2, ia = regionWidth(inner) / 2, ib = regionHeight(inner) / 2
+  const toOuter = (qx: number, qy: number, t: number) => {
+    for (let k = 0; k < 20; k++) {
+      const c = Math.cos(t), s = Math.sin(t), px = a * c - qx, py = b * s - qy
+      const g = -a * s * px + b * c * py, dg = a * a * s * s + b * b * c * c - a * c * px - b * s * py
+      if (!(Math.abs(dg) > 1e-15)) break
+      const step = g / dg
+      t -= step
+      if (Math.abs(step) < 1e-13) break
+    }
+    return Math.hypot(a * Math.cos(t) - qx, b * Math.sin(t) - qy)
+  }
+  const N = 2048
+  let width = Infinity, best = 0
+  for (let i = 0; i <= N; i++) {
+    const phi = (i / N) * (Math.PI / 2), qx = ia * Math.cos(phi), qy = ib * Math.sin(phi)
+    const d = Math.min(toOuter(qx, qy, phi), toOuter(qx, qy, Math.atan2(a * qy, b * qx)))
+    if (d < width) { width = d; best = phi }
+  }
+  const x = ia * Math.cos(best), y = ib * Math.sin(best)
+  return { width, at: [[cx + x, cy + y], [cx - x, cy + y], [cx + x, cy - y], [cx - x, cy - y]] }
 }
 
 // Veins under `limit` somewhere along their length: how many, the thinnest, how many reach `burn`, the stretches
@@ -422,20 +538,34 @@ function thinVeins(lines: Polygon[], widths: number[][], limit: number, burn: nu
 // ---------- words ----------
 
 export type WordSettings = Pick<Settings, 'units' | 'dpi' | 'kerf' | 'smallestWeb' | 'smallestFeature' | 'minHole' | 'wallsFollow' | 'cellStyle'>
+  & Partial<Pick<Settings, 'sheetOutline'>>
 export type CheckWords = { label: string; detail: string; tip: string }
 
 const plural = (n: number, one: string, many: string) => (n === 1 ? one : many)
 const counted = (n: number, one: string, many: string) => `${n.toLocaleString()} ${plural(n, one, many)}`
+
+// A measured value and the limit it's under, each with up to two more decimals than usual when they would otherwise
+// read the same: "0.997 mm, under 1 mm", never "1 mm, under 1 mm".
+export function underWords(value: number, limit: number, s: Pick<Settings, 'units' | 'dpi'>): [string, string] {
+  const shown = formatSmall(value, s.units, s.dpi), shownLimit = formatSmall(limit, s.units, s.dpi)
+  if (shown !== shownLimit || !(value < limit)) return [shown, shownLimit]
+  const at = (mm: number, digits: number) => `${trimZeros(toUnits(mm, s.units, s.dpi).toFixed(digits))} ${UNIT_LABEL[s.units]}`
+  const digits = decimals(s.units, true)
+  const v1 = at(value, digits + 1), l1 = at(limit, digits + 1)
+  return v1 !== l1 ? [v1, l1] : [at(value, digits + 2), at(limit, digits + 2)]
+}
 
 // A check's row in the File tab: what's wrong, a short detail, and a tooltip that says why it fails and how to fix it.
 export function checkWords(c: Check, p: Preflight, s: WordSettings): CheckWords {
   const L = (mm: number) => formatSmall(mm, s.units, s.dpi)
   const n = c.count, one = n === 1
   const kerf = L(s.kerf), web = L(Math.max(s.kerf, s.smallestWeb)), feature = L(s.smallestFeature)
+  // "Thinnest 0.997 mm, under 1 mm": the worst and its limit, told apart.
+  const under = (what: string, limit: number) => { const [v, l] = underWords(c.worst, limit, s); return `${what} ${v}, under ${l}` }
   switch (c.id) {
     case 'solid':
       if (!p.holes) return {
-        label: 'No holes to cut', detail: `All ${counted(n, 'cell is', 'cells are')} left solid`,
+        label: 'No holes to cut', detail: one ? 'The only cell is left solid' : `All ${counted(n, 'cell is', 'cells are')} left solid`,
         tip: 'Every cell is narrower than Smallest hole once the web is taken out, so Laser SVG and DXF are off. Lower Web width or Smallest hole on the Style tab, or use fewer cells.',
       }
       return {
@@ -454,39 +584,39 @@ export function checkWords(c: Check, p: Preflight, s: WordSettings): CheckWords 
         label: `${counted(n, 'web', 'webs')} the laser burns away`, detail: c.worst > 1e-9 ? `Thinnest ${L(c.worst)}, kerf ${kerf}` : 'Holes touch',
         tip: `${which} no wider than the ${kerf} kerf, so cutting the holes on both sides takes ${one ? 'it' : 'them'} away and the holes join. To keep ${one ? 'it' : 'them'}, ${fixes}.`,
       } : {
-        label: `${counted(n, 'web', 'webs')} under the smallest web`, detail: `Thinnest ${L(c.worst)}, under ${web}`,
+        label: `${counted(n, 'web', 'webs')} under the smallest web`, detail: under('Thinnest', c.threshold),
         tip: `${which} thinner than your smallest web (${web}), so ${one ? 'it' : 'they'} may char, warp or snap. To thicken ${one ? 'it' : 'them'}, ${fixes}.`,
       }
     }
     case 'smallHoles':
       return {
-        label: `${counted(n, 'hole', 'holes')} under the smallest feature`, detail: `Narrowest ${L(c.worst)}, under ${feature}`,
+        label: `${counted(n, 'hole', 'holes')} under the smallest feature`, detail: under('Narrowest', c.threshold),
         tip: `${one ? 'This hole is' : 'These holes are'} narrower than your smallest feature (${feature}), so ${one ? 'it' : 'they'} may char shut or not drop out. Raise Smallest hole on the Style tab to ${feature} to leave ${one ? 'it' : 'them'} solid, or use fewer cells.`,
       }
     case 'shortCuts':
       return {
-        label: `${counted(n, 'cut', 'cuts')} shorter than the smallest feature`, detail: `Shortest ${L(c.worst)}, under ${feature}`,
+        label: `${counted(n, 'cut', 'cuts')} shorter than the smallest feature`, detail: under('Shortest', c.threshold),
         tip: `${one ? 'This edge is' : 'These edges are'} shorter than your smallest feature (${feature}). The laser makes ${one ? 'it' : 'them'} as a dot, and the cells around ${one ? 'it' : 'them'} seem to meet at one corner. Relax the pattern (R), or turn on Auto-relax (P), to lengthen ${one ? 'it' : 'them'}.`,
       }
     case 'thinCells': {
       const burned = c.burned ?? 0
       return {
-        label: `${counted(n, 'cell', 'cells')} narrower than the smallest web`, detail: `Narrowest ${L(c.worst)}, under ${web}`,
+        label: `${counted(n, 'cell', 'cells')} narrower than the smallest web`, detail: under('Narrowest', c.threshold),
         tip: `Lines style cuts every cell out as a piece, and ${one ? 'this one is' : 'these are'} under your smallest web (${web}) across, so ${one ? 'it' : 'they'} may burn or fall through the bed${burned ? `. ${counted(burned, 'is', 'are')} no wider than the ${kerf} kerf, which the laser burns away` : ''}. Relax the pattern (R), use fewer cells, or move the points apart.`,
       }
     }
     case 'border': {
       const burns = (c.burned ?? 0) > 0
       return {
-        label: burns ? 'The border burns away' : 'Border under the smallest web', detail: `${L(c.worst)} wide`,
-        tip: `The frame between the pattern and the sheet outline is ${L(c.worst)} wide, ${burns ? `no wider than the ${kerf} kerf, so the laser burns it away` : `under your smallest web (${web}), so it may snap`}. Widen Border on the Sheet tab, set it to 0, or turn off Include the sheet outline.`,
+        label: burns ? 'The border burns away' : 'Border under the smallest web', detail: `${L(c.worst)} wide${c.uneven ? ' at its narrowest' : ''}`,
+        tip: `The frame between the pattern and the sheet outline is ${L(c.worst)} wide${c.uneven ? ' where it’s narrowest, toward the ends of the long axis' : ''}, ${burns ? `no wider than the ${kerf} kerf, so the laser burns it away` : `under your smallest web (${web}), so it may snap`}. Widen Border on the Sheet tab, set it to 0, or turn off Include the sheet outline.`,
       }
     }
     case 'thinVeins': {
       const burned = c.burned ?? 0
-      const reach = burned === n ? (one ? 'it reaches' : 'all reach') : `${burned.toLocaleString()} reach`
+      const reach = burned === n ? (one ? 'it reaches' : 'all reach') : counted(burned, 'reaches', 'reach')
       return {
-        label: `${counted(n, 'vein', 'veins')} under the smallest web`, detail: `Thinnest ${L(c.worst)}, under ${web}`,
+        label: `${counted(n, 'vein', 'veins')} under the smallest web`, detail: under('Thinnest', c.threshold),
         tip: `Lines style cuts along both sides of each vein, so each vein is a strip of material. ${one ? 'This one narrows to' : 'These narrow to as little as'} ${L(c.worst)}, under your smallest web (${web})${burned ? `, and ${reach} the ${kerf} kerf, which the laser burns away` : ''}. Raise Vein width or lower Taper on the Pattern tab, or use Holes, where veins join the web.`,
       }
     }
@@ -523,5 +653,5 @@ export function summaryWords(p: Preflight, s: WordSettings): string {
   const web = L(Math.max(s.kerf, s.smallestWeb)), feature = L(s.smallestFeature)
   if (p.style === 'holes') return `Ready to cut: every cell has a hole, no web is under ${web}, and no hole under ${feature}.`
   if (p.style === 'lines') return `Ready to cut: no cut is shorter than ${feature}, and no piece narrower than ${web}.`
-  return `${s.cellStyle === 'holes' ? 'Holes are' : 'Edges are'} hidden, so the cut files hold only the sheet outline and any marks.`
+  return `${s.cellStyle === 'holes' ? 'Holes are' : 'Edges are'} hidden, so the cut files hold only ${s.sheetOutline === false ? 'the marks' : 'the sheet outline and any marks'}.`
 }

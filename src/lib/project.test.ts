@@ -34,12 +34,18 @@ describe('project files', () => {
     expect(() => parseProject('{"schema":"voronoi-studio/project","version":1,"points":[1,2,3]}')).toThrow(/damaged/)
   })
 
-  it('keeps the machine values for Ready to cut?, and gives files from before them the defaults', () => {
+  it('keeps the machine values for Ready to cut?, and gives files from before them the ones in use or the defaults', () => {
     const settings = { ...DEFAULTS, kerf: 0.2, smallestWeb: 1.6, smallestFeature: 0.8 }
     const back = parseProject(serializeProject({ settings, points: Float64Array.from([10, 20, 30, 40]), handEdited: false }))
     expect([back.settings.kerf, back.settings.smallestWeb, back.settings.smallestFeature]).toEqual([0.2, 1.6, 0.8])
     const old = parseProject(readFileSync(new URL('../../test-fixtures/minimal-v1.voronoi.json', import.meta.url), 'utf8'))
     expect([old.settings.kerf, old.settings.smallestWeb, old.settings.smallestFeature]).toEqual([0.15, 1, 0.5])
+    // Opened in the app, a file from before them keeps the values in use, as New does; a file with its own keeps those.
+    const inUse = { kerf: 0.25, smallestWeb: 2, smallestFeature: 1 }
+    const kept = parseProject(readFileSync(new URL('../../test-fixtures/minimal-v1.voronoi.json', import.meta.url), 'utf8'), inUse)
+    expect([kept.settings.kerf, kept.settings.smallestWeb, kept.settings.smallestFeature]).toEqual([0.25, 2, 1])
+    const own = parseProject(serializeProject({ settings, points: Float64Array.from([10, 20, 30, 40]), handEdited: false }), inUse)
+    expect([own.settings.kerf, own.settings.smallestWeb, own.settings.smallestFeature]).toEqual([0.2, 1.6, 0.8])
     const odd = sanitizeSettings({ kerf: 9, smallestWeb: -1, smallestFeature: 'small' })
     expect([odd.kerf, odd.smallestWeb, odd.smallestFeature]).toEqual([5, 0, 0.5])
   })

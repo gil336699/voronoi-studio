@@ -170,24 +170,24 @@ Long cells leave long, thin webs between them, so a stretched panel is stiffer a
 
 ### Ready to cut?
 
-The File tab checks the cut files against your machine before you export. Give it your laser's **Kerf** and your material's **Smallest web** and **Smallest feature** (0.15, 1 and 0.5 mm to start). They're saved with the project, shown in the sheet's unit, and kept when you press New.
+The File tab checks the cut files against your machine before you export. Give it your laser's **Kerf** and your material's **Smallest web** and **Smallest feature** (0.15, 1 and 0.5 mm to start). They're saved with the project, shown in the sheet's unit, and kept when you press New or open a project saved before 1.13.
 
 | Check | Style | Counted when | Change |
 | --- | --- | --- | --- |
-| Cells left solid | Holes | a cell is narrower than Smallest hole once the web is taken out, so it has no hole | Web width or Smallest hole, or relax |
+| Cells left solid | Holes | a cell is narrower than Smallest hole once the web is taken out, so it has no hole, or an imported outline cuts a cell into pieces and a piece has none | Web width or Smallest hole, or relax |
 | Webs the laser burns away | Holes | the material between two holes, or between a hole and the sheet outline when the outline is cut, is no wider than the kerf | Web width, Walls follow cell size, Border |
 | Webs under the smallest web | Holes | that material is wider than the kerf but thinner than the smallest web | the same |
 | Holes under the smallest feature | Holes | a hole is narrower than the smallest feature | raise Smallest hole to leave them solid, or use fewer cells |
-| Cuts shorter than the smallest feature | Lines | an edge is between 5 µm and the smallest feature long: the laser makes it as a dot | relax |
-| Cells narrower than the smallest web | Lines | a cell, cut out as a piece, is narrower than the smallest web | relax, or use fewer cells |
-| Border under the smallest web | Lines | the frame between the pattern and the cut sheet outline is thinner than the smallest web | Border, or Include the sheet outline |
+| Cuts shorter than the smallest feature | Lines | a wall between two cells is between 5 µm and the smallest feature long: the laser makes it as a dot. A wall a stretch bends into straight pieces is measured whole | relax |
+| Cells narrower than the smallest web | Lines | a cell, cut out as a piece, is narrower than the smallest web; a cell an imported outline cuts apart is each of its pieces | relax, or use fewer cells |
+| Border under the smallest web | Lines | the frame between the pattern and the cut sheet outline is thinner than the smallest web. Round an ellipse it narrows toward the ends of the long axis, and is measured there | Border, or Include the sheet outline |
 | Veins under the smallest web | Lines | a vein, cut along both sides, narrows below the smallest web | Vein width or Taper, or use Holes |
 | Outlines that cross themselves, holes too small for the files | Holes | shown only if there are any | Corner radius or Smallest hole |
 | Sites or Delaunay lines in the cut files | both | they're shown, so the files hold them as marks on their own layers | set those layers to score or off, or hide them |
 
-Point at a row and its problems light up in orange on the sheet, each with a ring round it, so even a 0.1 mm web shows at full view. Click the row to keep them shown while you change settings on other tabs; Esc clears it. It only warns: every export stays available, except that Laser SVG and DXF stay off when Holes leaves no hole.
+Point at a row and its problems light up in orange on the sheet, each with a ring round it, so even a 0.1 mm web shows at full view. Click the row to keep them shown while you change settings on other tabs; Esc clears it (an Esc that closes a dialog doesn't). It only warns: every export stays available, except that Laser SVG and DXF stay off when Holes leaves no hole.
 
-Webs are measured between the hole outlines as drawn. A convex hole is its core grown by its corner radius, so the gap between two is exact; holes in cells clipped by an imported outline or a vein are measured on their outlines. The kerf isn't taken off: a web drawn 1 mm wide is about 0.85 mm once cut with a 0.15 mm kerf, so set Smallest web to the narrowest web you'd draw.
+Webs are measured between the hole outlines as drawn. A convex hole is its core grown by its corner radius, so the gap between two is exact; holes in cells clipped by an imported outline or a vein are measured on their outlines. Anything within 1 µm of a limit passes, the precision the cut files are written to, so a web drawn exactly at the smallest web isn't listed. When a value and its limit would read the same, the row shows more decimals: "Thinnest 0.997 mm, under 1 mm". The kerf isn't taken off: a web drawn 1 mm wide is about 0.85 mm once cut with a 0.15 mm kerf, so set Smallest web to the narrowest web you'd draw.
 
 ### Exports
 
@@ -230,7 +230,7 @@ Exports and Save use the system save dialog where the browser has one, and downl
 | Veins, Join into loops, Loops or Vein ends, Start from, Vein width, Taper, Import veins… | Veins that split the sheet into regions (see Veins above). |
 | Walls follow cell size | Thinner web or lines between smaller cells (0–100 %). |
 | Sites, Edges or Holes, Delaunay, Picture | Show or hide each part of the design, in the view and in every export (the picture stays out of cut files). |
-| Kerf, Smallest web, Smallest feature | File tab, Ready to cut?: the laser and material values the cut files are checked against. Saved with the project; New keeps them. |
+| Kerf, Smallest web, Smallest feature | File tab, Ready to cut?: the laser and material values the cut files are checked against. Saved with the project; New keeps them, and so does opening a project saved before 1.13. |
 
 ## Keyboard shortcuts
 
@@ -247,7 +247,7 @@ Exports and Save use the system save dialog where the browser has one, and downl
 | 1, 2, 3, 4 | Sites, edges or holes, Delaunay, picture |
 | ⌘Z, ⇧⌘Z | Undo, redo |
 | ⌘S, ⌘O | Save, open project |
-| Esc | Close a dialog, leave a number box, or go back to Move |
+| Esc | Close a dialog, leave a number box, clear a pinned Ready to cut? row, or go back to Move |
 | ? | Shortcuts and quick start |
 
 On Windows and Linux, use Ctrl for ⌘. Space pans, as in most design tools, rather than running the main action.
@@ -339,7 +339,7 @@ Ready to cut?, measured in Node (best of 5) and in the app (production build, he
 | --- | --- | --- | --- |
 | Check, Holes with every web under the smallest web (Node) | 1.7 ms | 10.9 ms | 54 ms |
 | Check, Holes with Leaf loops (Node) | 2.8 ms | 11.1 ms | 50 ms |
-| Check, Lines with Leaf loops (Node) | 0.6 ms | 1.7 ms | 6.3 ms |
+| Check, Lines with Leaf loops (Node) | 0.9 ms | 1.7 ms | 7.5 ms |
 | Auto-relax, Holes with a 0.6 mm web, File tab closed and open (app) | — | 52.8 and 51.4 steps/s | 6.2 and 5.6 steps/s |
 
 While the design keeps changing, the check is redone at most every 250 ms, or every eight times its own time, and once more when the changes stop.
@@ -351,6 +351,7 @@ Patterns up to a few thousand cells stay smooth. With Auto-relax on while you dr
 - Cut files are not reordered to shorten laser travel.
 - Ready to cut? measures a concave hole's width across its convex outline, so it can miss a narrow neck in a hole clipped by an imported outline or a vein. A vein's width is the vein's own; where veins merge, the strip is wider than either.
 - Ready to cut? can't see your laser software's settings: if it offsets cuts for the kerf, set Kerf to 0.
+- Ready to cut? looks for webs as wide as the smallest web, so a smallest web far above the cell size (1 typed with the sheet in inches is 25.4 mm) makes it slow on big designs, about half a second at 10,000 holes, and its count then includes holes that aren't neighbours.
 - The live design is kept in the browser's local storage; clearing site data removes it. Save a project file to keep work. A density picture adds about 260 kB to it.
 - Leaf veins come from a fixed set of targets for each setting, so Shuffle changes the cells but not the veins.
 - A field that turns within a few cells' length can't be followed by cells that size: they stay round there, and the hint says how much of the sheet follows. Relaxing with a field is two to five times slower than with one direction.

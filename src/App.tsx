@@ -168,7 +168,7 @@ export function App() {
 
   const readProject = async (file: File) => {
     try {
-      const opened = parseProject(await file.text())
+      const opened = parseProject(await file.text(), machineOf(s))
       design.replace({ ...opened, stale: false }, true)
       setOpenError('')
       setStatus({ text: `Opened ${file.name}.` })
@@ -316,9 +316,12 @@ export function App() {
         && !(target instanceof HTMLInputElement && ['range', 'checkbox', 'radio'].includes(target.type))
       const mod = event.metaKey || event.ctrlKey
       const key = event.key.toLowerCase()
+      // Esc does one thing: closes a dialog, or leaves a number box, or else goes back to Move and clears a pinned
+      // Ready to cut? row. (Before 1.13.3 closing a dialog also cleared the pinned row.)
       if (event.key === 'Escape') {
-        if (typing && !pending && !showHelp && target instanceof HTMLElement) { target.blur(); return }
-        setShowHelp(false); setPending(null); if (!typing) { setTool('move'); setPinnedCheck(null) } return
+        if (pending || showHelp) { setShowHelp(false); setPending(null); return }
+        if (typing) { if (target instanceof HTMLElement) target.blur(); return }
+        setTool('move'); setPinnedCheck(null); return
       }
       if (pending || showHelp) return
       if (mod && key === 's') { event.preventDefault(); void saveProject(); return }

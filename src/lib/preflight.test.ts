@@ -1,14 +1,14 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import type { Vec } from '../voronoi/geometry'
+import { convexHull, minWidth, signedArea, type Polygon, type Vec } from '../voronoi/geometry'
 import { makeHole, type Hole, type Outline } from '../voronoi/holes'
 import { buildGeometry, patternRegion, type Geometry } from '../voronoi/pattern'
-import { regionRings } from '../voronoi/region'
+import { regionHeight, regionRings, regionWidth } from '../voronoi/region'
 import { seedPoints } from '../voronoi/seeding'
 import { shapeFromOutlines } from '../voronoi/shape'
 import { runJob } from '../worker/jobs'
 import { MIN_CUT, tidyOutline } from './cutPaths'
-import { checkWords, crosses, findWebs, flatten, preflight, provablySimple, summaryWords, type Check, type CheckId } from './preflight'
+import { checkWords, crosses, EPS, findWebs, flatten, preflight, provablySimple, summaryWords, wallsOf, type Check, type CheckId, type Preflight } from './preflight'
 import { DEFAULTS, seedSettings, stretchOf, type Settings } from './settings'
 import { readSvgOutlines } from './svgShape'
 
@@ -56,7 +56,8 @@ function bruteWebs(g: Geometry, s: Settings) {
     const d = refine(Math.min(...regionRings(g.sheet).map(f => gapBetween(ring, f))), i, regionRings(g.sheet))
     if (d < limit) frames.push(d)
   })
-  const classify = (list: number[]) => ({ burn: list.filter(d => d <= s.kerf + 1e-6).length, thin: list.filter(d => d > s.kerf + 1e-6 && d < s.smallestWeb - 1e-6).length })
+  // The same tolerance as the app: a web within 1 µm of a limit passes.
+  const classify = (list: number[]) => ({ burn: list.filter(d => d <= s.kerf + EPS).length, thin: list.filter(d => d > s.kerf + EPS && d < s.smallestWeb - EPS).length })
   return { inner: classify(widths), frame: classify(frames) }
 }
 
@@ -214,5 +215,123 @@ describe('Ready to cut? marks and words', () => {
     const one = checkWords({ id: 'smallHoles', count: 1, worst: 0.3, threshold: 0.5, marks: { spots: [] } }, clear, fine.s)
     expect(one.label).toBe('1 hole under the smallest feature')
     expect(one.tip).toMatch(/^This hole is narrower than your smallest feature \(0\.5 mm\)/)
+  })
+})
+
+describe('Ready to cut? 1.13.3', () => {
+  const pill = () => shapeFromOutlines(readSvgOutlines(readFileSync(new URL('../../test-fixtures/pill-with-hole.svg', import.meta.url), 'utf8')).rings, 'pill')
+  // A bar with 12 teeth 4 mm wide and 3 mm apart, so cells straddle the gaps and are cut into pieces.
+  const comb = (): Polygon => {
+    const pts: Vec[] = [[0, 0], [100, 0], [100, 20]]
+    for (let i = 0; i < 12; i++) { const x = 100 - i * (100 / 12); pts.push([x, 60], [x - 4, 60], [x - 4, 20]) }
+    pts.push([0, 20])
+    return pts.slice(0, -1).concat([[0, 60]]).filter((p, i, a) => i === 0 || p[0] !== a[i - 1][0] || p[1] !== a[i - 1][1])
+  }
+  const inside = (ring: Polygon, [x, y]: Vec) => {
+    let yes = false
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) if ((ring[i][1] > y) !== (ring[j][1] > y) && x < ((ring[j][0] - ring[i][0]) * (y - ring[i][1])) / (ring[j][1] - ring[i][1]) + ring[i][0]) yes = !yes
+    return yes
+  }
+
+  it('passes webs set exactly to the smallest web, though offsets leave them a fraction of a micrometre thin', () => {
+    const setups: Partial<Settings>[] = [
+      { shape: 'custom', customShape: pill(), width: 160, height: 80, border: 1, cornerRadius: 0.8, count: 150 },
+      { veins: 'leaf', veinLoops: true },
+      { veins: 'wing' },
+      { stretch: 3, stretchAngle: 30 },
+      { shape: 'ellipse', border: 3, web: 3, smallestWeb: 3 },
+    ]
+    for (const over of setups) {
+      const { s, points, g } = design({ cellStyle: 'holes', web: 1, smallestWeb: 1, showSites: false, ...over }, 3)
+      const r = preflight(g, points, s)
+      expect(find(r.checks, 'thinWebs'), JSON.stringify(Object.keys(over))).toBeUndefined()
+      // ...while a web a hundredth of a millimetre under the limit is still listed.
+      const under = design({ cellStyle: 'holes', web: 1, showSites: false, ...over, smallestWeb: (over.web ?? 1) + 0.01 }, 3)
+      expect(find(preflight(under.g, under.points, under.s).checks, 'thinWebs')).toBeDefined()
+    }
+  })
+
+  it('tells the worst from its limit when they would read the same', () => {
+    const p: Preflight = { style: 'holes', checks: [], holes: 300, cells: 300 }
+    const mm = { ...DEFAULTS, units: 'mm' as const }
+    const check = (worst: number, threshold = 1): Check => ({ id: 'thinWebs', count: 3, worst, threshold, marks: { spots: [] } })
+    expect(checkWords(check(0.997), p, mm).detail).toBe('Thinnest 0.997 mm, under 1 mm')
+    expect(checkWords(check(0.9999), p, mm).detail).toBe('Thinnest 0.9999 mm, under 1 mm')
+    expect(checkWords(check(0.8), p, mm).detail).toBe('Thinnest 0.8 mm, under 1 mm')
+    expect(checkWords(check(0.99), p, { ...mm, units: 'in' }).detail).toBe('Thinnest 0.039 in, under 0.0394 in')
+  })
+
+  it('measures a wall bent into straight pieces whole, as the laser cuts it', () => {
+    const { s, points, g } = design({ stretch: 3, stretchField: 'wave', showSites: false }, 3)
+    const edges = g.edges.internal
+    // Join pieces through every point where exactly two meet, by union-find.
+    const parent = edges.map((_, i) => i)
+    const root = (i: number): number => (parent[i] === i ? i : (parent[i] = root(parent[i])))
+    const at = new Map<string, number[]>()
+    edges.forEach((e, i) => { for (const k of [`${Math.round(e[0] * 1e5)},${Math.round(e[1] * 1e5)}`, `${Math.round(e[2] * 1e5)},${Math.round(e[3] * 1e5)}`]) at.set(k, [...(at.get(k) ?? []), i]) })
+    for (const list of at.values()) if (list.length === 2) parent[root(list[0])] = root(list[1])
+    const lengths = new Map<number, number>()
+    edges.forEach((e, i) => lengths.set(root(i), (lengths.get(root(i)) ?? 0) + Math.hypot(e[2] - e[0], e[3] - e[1])))
+    const shortWalls = [...lengths.values()].filter(l => l >= MIN_CUT && l < s.smallestFeature - 1e-3).length
+    const shortPieces = edges.filter(e => { const l = Math.hypot(e[2] - e[0], e[3] - e[1]); return l >= MIN_CUT && l < s.smallestFeature - 1e-3 }).length
+    expect(lengths.size).toBeLessThan(edges.length)
+    expect(wallsOf(edges).length).toBe(lengths.size)
+    expect(find(preflight(g, points, s).checks, 'shortCuts')?.count ?? 0).toBe(shortWalls)
+    expect(shortPieces).toBeGreaterThan(shortWalls)
+    // A plain pattern's walls are single pieces.
+    const plain = design({ showSites: false }, 3)
+    expect(wallsOf(plain.g.edges.internal).length).toBe(plain.g.edges.internal.length)
+  })
+
+  it('measures the border of an elliptical sheet where it is narrowest', () => {
+    const { s, points, g } = design({ shape: 'ellipse', width: 600, height: 60, border: 2, smallestWeb: 1.5, showSites: false })
+    const border = find(preflight(g, points, s).checks, 'border')
+    // Brute force: points round the inner ellipse (both semi-axes 2 mm shorter) to a 40,000-point outer one.
+    const a = regionWidth(g.sheet) / 2, b = regionHeight(g.sheet) / 2
+    let brute = Infinity
+    for (let i = 0; i <= 1000; i++) {
+      const t = (i / 1000) * (Math.PI / 2), qx = (a - 2) * Math.cos(t), qy = (b - 2) * Math.sin(t)
+      for (let j = 0; j <= 10000; j++) { const u = (j / 10000) * (Math.PI / 2); brute = Math.min(brute, Math.hypot(a * Math.cos(u) - qx, b * Math.sin(u) - qy)) }
+    }
+    expect(border).toBeDefined()
+    expect(border!.worst).toBeCloseTo(brute, 2)
+    expect(border!.worst).toBeLessThan(1.2)
+    expect(checkWords(border!, preflight(g, points, s), s).detail).toMatch(/^1\.1\d mm wide at its narrowest$/)
+    // A circle's frame is the border all round.
+    const circle = design({ shape: 'ellipse', border: 2, smallestWeb: 1.5, showSites: false })
+    expect(find(preflight(circle.g, circle.points, circle.s).checks, 'border')).toBeUndefined()
+  })
+
+  it('checks each piece of a cell an outline cuts apart', () => {
+    const base: Partial<Settings> = { shape: 'custom', customShape: shapeFromOutlines([comb()], 'comb'), width: 100, height: 60, border: 0, count: 150, showSites: false }
+    // Lines style cuts each piece out on its own: a cell is as narrow as its narrowest piece.
+    const lines = design({ ...base, smallestWeb: 1.5 }, 2)
+    const narrow = lines.g.cells.filter(c => c && Math.min(...c.filter(r => signedArea(r) > 0).map(r => minWidth(convexHull(r)))) < 1.5 - 1e-3).length
+    expect(find(preflight(lines.g, lines.points, lines.s).checks, 'thinCells')?.count ?? 0).toBe(narrow)
+    const together = lines.g.cells.filter(c => c && minWidth(convexHull(c.flat())) < 1.5 - 1e-3).length
+    expect(narrow).toBeGreaterThan(together)
+    // Holes style: a piece with none of its cell's holes is left solid.
+    const holes = design({ ...base, cellStyle: 'holes' }, 2)
+    // A cell with no hole counts once, as before; a cell with a hole in one piece also lists its other pieces.
+    let bare = 0, noHole = 0
+    holes.g.cells.forEach((c, i) => {
+      if (!c) return
+      const mine = holes.g.holes.filter(h => h.cell === i)
+      if (!mine.length) { bare++; noHole++; return }
+      for (const ring of c.filter(r => signedArea(r) > 0)) if (!mine.some(h => inside(ring, h.outline.points[0]))) bare++
+    })
+    expect(bare).toBeGreaterThan(noHole)
+    expect(find(preflight(holes.g, holes.points, holes.s).checks, 'solid')?.count ?? 0).toBe(bare)
+  })
+
+  it('words: one of several veins reaches the kerf, the only cell, and marks with the outline off', () => {
+    const s = { ...DEFAULTS }
+    const veins: Check = { id: 'thinVeins', count: 5, worst: 0.1, threshold: 1, burned: 1, marks: { spots: [] } }
+    expect(checkWords(veins, { style: 'lines', checks: [], holes: 0, cells: 300 }, s).tip).toMatch(/and 1 reaches the 0\.15 mm kerf/)
+    const solid: Check = { id: 'solid', count: 1, worst: NaN, threshold: NaN, marks: { spots: [] } }
+    expect(checkWords(solid, { style: 'holes', checks: [solid], holes: 0, cells: 1 }, s).detail).toBe('The only cell is left solid')
+    const marks: Preflight = { style: 'marks', checks: [], holes: 0, cells: 300 }
+    expect(summaryWords(marks, { ...s, cellStyle: 'holes', sheetOutline: false })).toBe('Holes are hidden, so the cut files hold only the marks.')
+    expect(summaryWords(marks, { ...s, cellStyle: 'holes', sheetOutline: true })).toBe('Holes are hidden, so the cut files hold only the sheet outline and any marks.')
   })
 })

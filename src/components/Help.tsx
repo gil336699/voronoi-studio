@@ -28,7 +28,7 @@ const SHORTCUTS: [string, string][] = [
   ['1  2  3  4', 'Sites, edges, Delaunay, picture'],
   ['⌘Z  ⇧⌘Z', 'Undo, redo'],
   ['⌘S  ⌘O', 'Save, open project'],
-  ['Esc', 'Close, or back to Move'],
+  ['Esc', 'Close, leave a number box, clear a pinned Ready to cut? row, or back to Move'],
   ['?', 'This list'],
 ]
 
